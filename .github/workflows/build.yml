@@ -34,12 +34,12 @@ jobs:
         with:
           esp_idf_version: v5.5
           target: ${{ matrix.platform }}
-          command: python tactility.py build --platform ${{ matrix.platform }}
+          command: python tactility.py build ${{ matrix.platform }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: picotility-${{ matrix.platform }}
           path: |
-            build_*/picotility-*.tapp
+            build/*.app
           if-no-files-found: warn
