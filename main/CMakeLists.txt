@@ -8,6 +8,7 @@ list(FILTER Z8LUA_SOURCES EXCLUDE REGEX "loslib\\.c$")   # OS functions (not nee
 list(FILTER Z8LUA_SOURCES EXCLUDE REGEX "loadlib\\.c$")  # dynamic loading (not needed)
 list(FILTER Z8LUA_SOURCES EXCLUDE REGEX "ltests\\.c$")   # test functions (not needed)
 list(FILTER Z8LUA_SOURCES EXCLUDE REGEX "lmathlib\\.c$") # standard math (use pico8 math instead)
+list(FILTER Z8LUA_SOURCES EXCLUDE REGEX "ldblib\\.c$")   # debug library (not needed)
 
 # Add math stubs
 list(APPEND Z8LUA_SOURCES "z8lua/math_stubs.cpp")
