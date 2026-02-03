@@ -31,12 +31,11 @@ jobs:
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.5
-          target: ${{ matrix.platform }}
           command: python tactility.py build
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: picotility-${{ matrix.platform }}
+          name: picotility-build
           path: |
             build/*.app
           if-no-files-found: warn
