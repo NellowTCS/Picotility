@@ -10,8 +10,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
 
     steps:
       - name: Checkout
@@ -27,16 +25,32 @@ jobs:
       - name: Install Python dependencies
         run: pip install requests
 
-      - name: Build
+      - name: Build ESP32
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.5
-          target: esp32, esp32s3
+          target: esp32
           command: python tactility.py build
-      - name: Upload artifacts
+
+      - name: Build ESP32S3
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5
+          target: esp32s3
+          command: python tactility.py build
+
+      - name: Upload ESP32 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: picotility-build
+          name: picotility-build-esp32
           path: |
-            build/*.app
+            build/esp32/*.app
+          if-no-files-found: warn
+
+      - name: Upload ESP32S3 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: picotility-build-esp32s3
+          path: |
+            build/esp32s3/*.app
           if-no-files-found: warn
