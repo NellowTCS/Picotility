@@ -1,3 +1,7 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
 ** $Id: ldblib.c,v 1.132.1.1 2013/04/12 18:48:47 roberto Exp roberto $
 ** Interface from Lua to its debug API
@@ -401,8 +405,11 @@ static const luaL_Reg dblib[] = {
 };
 
 
-LUAMOD_API extern "C" int luaopen_debug (lua_State *L) {
+LUAMOD_API int luaopen_debug (lua_State *L) {
   luaL_newlib(L, dblib);
   return 1;
 }
 
+#ifdef __cplusplus
+}
+#endif
