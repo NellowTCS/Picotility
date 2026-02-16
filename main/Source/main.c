@@ -38,6 +38,12 @@ typedef struct {
 
 static PicotilityApp* g_app = NULL;
 
+// Forward declarations
+static void back_btn_event_cb(lv_event_t* e);
+static void cart_btn_event_cb(lv_event_t* e);
+static void start_game_ui(PicotilityApp* app);
+void show_picker_ui(lv_obj_t* parent, PicotilityApp* app);
+
 static lv_color_t pico_palette[16];
 static void init_palette(void) {
     pico_palette[0]  = lv_color_make(0x00, 0x00, 0x00);  // black
@@ -85,11 +91,11 @@ static void render_to_canvas(PicotilityApp* app) {
         }
     }
     // Mark canvas dirty to LVGL
-    lv_canvas_refresh(app->game_canvas);
+    lv_obj_invalidate(app->game_canvas);
 }
 
 static void game_timer_cb(lv_timer_t* t) {
-    PicotilityApp* app = (PicotilityApp*)t->user_data;
+    PicotilityApp* app = (PicotilityApp*)lv_timer_get_user_data(t);
     if (!app || !app->running) return;
     pico_vm_step(&app->vm);
     render_to_canvas(app);
@@ -105,7 +111,7 @@ static void start_game_ui(PicotilityApp* app) {
     memset(app->canvas_buf, 0, CANVAS_W * CANVAS_H * sizeof(lv_color_t));
 
     app->game_canvas = lv_canvas_create(lv_scr_act());
-    lv_canvas_set_buffer(app->game_canvas, app->canvas_buf, CANVAS_W, CANVAS_H, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_set_buffer(app->game_canvas, app->canvas_buf, CANVAS_W, CANVAS_H, LV_COLOR_FORMAT_RGB565);
     lv_obj_align(app->game_canvas, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_border_width(app->game_canvas, 2, 0);
 
@@ -114,29 +120,31 @@ static void start_game_ui(PicotilityApp* app) {
     lv_obj_t* lbl = lv_label_create(back_btn);
     lv_label_set_text(lbl, "Back");
     lv_obj_center(lbl);
-    lv_obj_add_event_cb(back_btn, [](lv_event_t* e) {
-        PicotilityApp* app = g_app;
-        if (!app) return;
-        // Stop game
-        app->running = false;
-        if (app->game_timer) { lv_timer_del(app->game_timer); app->game_timer = NULL; }
-        if (app->game_canvas) { lv_obj_del(app->game_canvas); app->game_canvas = NULL; }
-        if (app->canvas_buf) { free(app->canvas_buf); app->canvas_buf = NULL; }
-        // Clean up back button
-        lv_obj_del(lv_event_get_target(e));
-        // Show picker UI
-        app->ui_state = UI_STATE_PICKER;
-        // Use parent as parent for new picker UI
-        lv_obj_t* parent = lv_scr_act();
-        // Re-create picker
-        extern void show_picker_ui(lv_obj_t* parent, PicotilityApp* app);
-        show_picker_ui(parent, app);
-    }, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(back_btn, back_btn_event_cb, LV_EVENT_CLICKED, NULL);
 
     // Start the game
     pico_vm_run(&app->vm);
     app->running = true;
     app->game_timer = lv_timer_create(game_timer_cb, 1000 / app->vm.target_fps, app);
+}
+
+static void back_btn_event_cb(lv_event_t* e) {
+    PicotilityApp* app = g_app;
+    if (!app) return;
+    // Stop game
+    app->running = false;
+    if (app->game_timer) { lv_timer_del(app->game_timer); app->game_timer = NULL; }
+    if (app->game_canvas) { lv_obj_del(app->game_canvas); app->game_canvas = NULL; }
+    if (app->canvas_buf) { free(app->canvas_buf); app->canvas_buf = NULL; }
+    // Clean up back button
+    lv_obj_del(lv_event_get_target(e));
+    // Show picker UI
+    app->ui_state = UI_STATE_PICKER;
+    // Use parent as parent for new picker UI
+    lv_obj_t* parent = lv_scr_act();
+    // Re-create picker
+    extern void show_picker_ui(lv_obj_t* parent, PicotilityApp* app);
+    show_picker_ui(parent, app);
 }
 
 static void cart_btn_event_cb(lv_event_t* e) {
@@ -206,7 +214,7 @@ void show_picker_ui(lv_obj_t* parent, PicotilityApp* app) {
                 lv_obj_t* lbl = lv_label_create(btn);
                 lv_label_set_text(lbl, entry->d_name);
                 lv_obj_center(lbl);
-                char* fname = lv_mem_alloc(strlen(entry->d_name) + 1);
+                char* fname = lv_malloc(strlen(entry->d_name) + 1);
                 strcpy(fname, entry->d_name);
                 lv_obj_set_user_data(btn, fname);
                 lv_obj_add_event_cb(btn, cart_btn_event_cb, LV_EVENT_CLICKED, NULL);
