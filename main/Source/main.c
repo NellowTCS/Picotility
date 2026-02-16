@@ -158,10 +158,14 @@ static void cart_btn_event_cb(lv_event_t* e) {
             strncpy(g_app->cart_path, fullpath, sizeof(g_app->cart_path)-1);
             bool ok = pico_vm_load_cart(&g_app->vm, g_app->cart_path);
             if (g_app->status_label) {
-                if (ok)
+                if (ok) {
                     lv_label_set_text_fmt(g_app->status_label, "Loaded: %s", g_app->cart_path);
-                else
-                    lv_label_set_text_fmt(g_app->status_label, "Failed to load: %s", g_app->cart_path);
+                    printf("[INFO] Loaded cart: %s\n", g_app->cart_path);
+                } else {
+                    const char* err = pico_vm_get_error(&g_app->vm);
+                    lv_label_set_text_fmt(g_app->status_label, "Failed to load: %s\n%s", g_app->cart_path, err);
+                    printf("[ERROR] Failed to load cart: %s\nReason: %s\n", g_app->cart_path, err);
+                }
             }
             if (ok) {
                 // Transition to game UI
