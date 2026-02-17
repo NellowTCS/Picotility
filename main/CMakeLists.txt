@@ -18,7 +18,7 @@ file(GLOB PICO_SOURCES "Source/*.c" "Source/*.cpp")
 
 idf_component_register(
     SRCS ${PICO_SOURCES} ${Z8LUA_SOURCES}
-    INCLUDE_DIRS "Include" "z8lua" ../../../Libraries/TactilityCpp/Include
+    INCLUDE_DIRS "Include" "z8lua" ../Libraries/TactilityCpp/Include
     REQUIRES TactilitySDK
 )
 
