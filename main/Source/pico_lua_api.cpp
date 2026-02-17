@@ -393,6 +393,22 @@ static int l_memset(lua_State* L) {
     return 0;
 }
 
+static int l_chr(lua_State* L) {
+    // chr(c1, [c2, ...]) — convert numbers to characters
+    int n = lua_gettop(L);
+    char buf[256];
+    int len = 0;
+    for (int i = 1; i <= n && len < (int)sizeof(buf) - 1; i++) {
+        int c = luaL_checkinteger(L, i);
+        if (c >= 0 && c <= 255) {
+            buf[len++] = (char)c;
+        }
+    }
+    buf[len] = '\0';
+    lua_pushlstring(L, buf, len);
+    return 1;
+}
+
 // PICO-8 Table Functions (not provided by z8lua or standard Lua)
 
 static int l_add(lua_State* L) {
@@ -480,6 +496,9 @@ static int l_count(lua_State* L) {
 
 static int l_foreach(lua_State* L) {
     // foreach(t, f) — call f(v) for each element in t
+    if (lua_isnil(L, 1)) {
+        return 0;  // Do nothing if table is nil
+    }
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_checktype(L, 2, LUA_TFUNCTION);
     int n = luaL_len(L, 1);
@@ -491,31 +510,24 @@ static int l_foreach(lua_State* L) {
     return 0;
 }
 
-// (adpated from zepto8)
-static int all_iterator(lua_State *L) {
-    luaL_checktype(L, 1, LUA_TTABLE);
-
-    int n = (int)lua_rawlen(L, 1);
-    int i = (int)lua_tointeger(L, 2);
-
-    while (++i <= n) {
-        lua_rawgeti(L, 1, i);         // stack: t, idx, t[i]
-        if (!lua_isnil(L, -1)) {
-            lua_pushinteger(L, i);    // stack: t, idx, t[i], i
-            lua_insert(L, -2);        // stack: t, idx, i, t[i]
-            return 2;                 // return: i, t[i]
-        }
-        lua_pop(L, 1); // remove nil value; continue loop
-    }
-    return 0; // iteration complete
+// all() iterator: returns next element each call
+static int all_iterator(lua_State* L) {
+    int i = lua_tointeger(L, lua_upvalueindex(2));
+    int n = luaL_len(L, lua_upvalueindex(1));
+    if (i > n) return 0;
+    lua_rawgeti(L, lua_upvalueindex(1), i);
+    lua_pushinteger(L, i + 1);
+    lua_replace(L, lua_upvalueindex(2));
+    return 1;
 }
 
-static int l_all(lua_State *L) {
+static int l_all(lua_State* L) {
+    // all(t): returns iterator function for use in for loops
     luaL_checktype(L, 1, LUA_TTABLE);
-    lua_pushcfunction(L, all_iterator);  // iterator function
-    lua_pushvalue(L, 1);                 // the table
-    lua_pushinteger(L, 0);               // start before first index
-    return 3; // returns: iterator, table, initial index
+    lua_pushvalue(L, 1);       // upvalue 1: table
+    lua_pushinteger(L, 1);     // upvalue 2: index
+    lua_pushcclosure(L, all_iterator, 2);
+    return 1;
 }
 
 // PICO-8 Utility Functions
@@ -569,6 +581,98 @@ static int l_printh(lua_State* L) {
         printf("[PICO-8] %s\n", s);
     }
     return 0;
+}
+
+static int l_split(lua_State* L) {
+    // split(s, [sep], [convert]) — split string into table
+    // If sep is nil or not provided, split into individual characters
+    // If convert is false, don't convert numbers
+    if (lua_gettop(L) < 1 || lua_isnil(L, 1)) {
+        lua_newtable(L);  // Return empty table instead of nil
+        return 1;
+    }
+    
+    const char* str = luaL_checkstring(L, 1);
+    const char* sep = NULL;
+    bool convert = true;
+    
+    if (lua_gettop(L) >= 2 && !lua_isnil(L, 2)) {
+        sep = lua_tostring(L, 2);
+    }
+    if (lua_gettop(L) >= 3) {
+        convert = lua_toboolean(L, 3);
+    }
+    
+    lua_newtable(L);
+    
+    if (sep == NULL) {
+        // Split into individual characters
+        int idx = 1;
+        while (*str) {
+            char c[2] = {*str, '\0'};
+            lua_pushlstring(L, c, 1);
+            lua_rawseti(L, -2, idx++);
+            str++;
+        }
+    } else {
+        // Split by separator
+        size_t sep_len = strlen(sep);
+        if (sep_len == 0) {
+            // Empty separator: split into chars
+            int idx = 1;
+            while (*str) {
+                char c[2] = {*str, '\0'};
+                lua_pushlstring(L, c, 1);
+                lua_rawseti(L, -2, idx++);
+                str++;
+            }
+        } else {
+            int idx = 1;
+            const char* start = str;
+            const char* p = str;
+            while (*p) {
+                if (strncmp(p, sep, sep_len) == 0) {
+                    size_t len = p - start;
+                    if (len > 0 || convert) {
+                        if (convert) {
+                            // Try to convert to number
+                            char* end;
+                            double num = strtod(start, &end);
+                            if (end == start + len) {
+                                lua_pushnumber(L, num);
+                            } else {
+                                lua_pushlstring(L, start, len);
+                            }
+                        } else {
+                            lua_pushlstring(L, start, len);
+                        }
+                        lua_rawseti(L, -2, idx++);
+                    }
+                    start = p + sep_len;
+                    p = start;
+                } else {
+                    p++;
+                }
+            }
+            // Last segment
+            size_t len = p - start;
+            if (len > 0 || convert) {
+                if (convert) {
+                    char* end;
+                    double num = strtod(start, &end);
+                    if (end == start + len) {
+                        lua_pushnumber(L, num);
+                    } else {
+                        lua_pushlstring(L, start, len);
+                    }
+                } else {
+                    lua_pushlstring(L, start, len);
+                }
+                lua_rawseti(L, -2, idx++);
+            }
+        }
+    }
+    return 1;
 }
 
 // Persistent Cart Data API
@@ -685,6 +789,7 @@ static const luaL_Reg pico_api[] = {
     {"poke4", l_poke4},
     {"memcpy", l_memcpy},
     {"memset", l_memset},
+    {"chr", l_chr},
     
     // Table functions (PICO-8 specific)
     {"add", l_add},
@@ -698,6 +803,7 @@ static const luaL_Reg pico_api[] = {
     {"rnd", l_rnd},
     {"srand", l_srand},
     {"sub", l_sub},
+    {"split", l_split},
     {"printh", l_printh},
 
     // Persistent data
@@ -716,6 +822,12 @@ static const luaL_Reg pico_api[] = {
 static void register_api(lua_State* L) {
     lua_pushglobaltable(L);
     luaL_setfuncs(L, pico_api, 0);
+    
+    // Add unpack (table.unpack)
+    lua_getglobal(L, "table");
+    lua_getfield(L, -1, "unpack");
+    lua_setglobal(L, "unpack");
+    
     lua_pop(L, 1);
 }
 
