@@ -393,8 +393,10 @@ static int l_memset(lua_State* L) {
     return 0;
 }
 
+// PICO-8 Table Functions (not provided by z8lua or standard Lua)
+
 static int l_add(lua_State* L) {
-    // add(t, v, [i]): insert v into table t, return v
+    // add(t, v, [i]) — insert v into table t, return v
     luaL_checktype(L, 1, LUA_TTABLE);
     int n = luaL_len(L, 1);
     if (lua_gettop(L) >= 3 && !lua_isnil(L, 3)) {
@@ -417,7 +419,7 @@ static int l_add(lua_State* L) {
 }
 
 static int l_del(lua_State* L) {
-    // del(t, v): delete first occurrence of v from t, return v
+    // del(t, v) — delete first occurrence of v from t, return v
     if (!lua_istable(L, 1)) return 0;
     int n = luaL_len(L, 1);
     for (int i = 1; i <= n; i++) {
@@ -440,7 +442,7 @@ static int l_del(lua_State* L) {
 }
 
 static int l_deli(lua_State* L) {
-    // deli(t, [i]): delete element at index i (default: last), return it
+    // deli(t, [i]) — delete element at index i (default: last), return it
     if (!lua_istable(L, 1)) return 0;
     int n = luaL_len(L, 1);
     int i = luaL_optinteger(L, 2, n);
@@ -456,7 +458,7 @@ static int l_deli(lua_State* L) {
 }
 
 static int l_count(lua_State* L) {
-    // count(t, [v]): count elements, or occurrences of v
+    // count(t, [v]) — count elements, or occurrences of v
     if (!lua_istable(L, 1)) {
         lua_pushinteger(L, 0);
         return 1;
@@ -477,7 +479,7 @@ static int l_count(lua_State* L) {
 }
 
 static int l_foreach(lua_State* L) {
-    // foreach(t, f): call f(v) for each element in t
+    // foreach(t, f) — call f(v) for each element in t
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_checktype(L, 2, LUA_TFUNCTION);
     int n = luaL_len(L, 1);
@@ -489,7 +491,7 @@ static int l_foreach(lua_State* L) {
     return 0;
 }
 
-// all() iterator: returns next element each call
+// all() iterator — returns next element each call
 static int all_iterator(lua_State* L) {
     int i = lua_tointeger(L, lua_upvalueindex(2));
     int n = luaL_len(L, lua_upvalueindex(1));
@@ -501,7 +503,7 @@ static int all_iterator(lua_State* L) {
 }
 
 static int l_all(lua_State* L) {
-    // all(t): returns iterator function for use in for loops
+    // all(t) — returns iterator function for use in for loops
     luaL_checktype(L, 1, LUA_TTABLE);
     lua_pushvalue(L, 1);       // upvalue 1: table
     lua_pushinteger(L, 1);     // upvalue 2: index
@@ -514,7 +516,7 @@ static int l_all(lua_State* L) {
 static uint32_t rng_state = 1;
 
 static int l_rnd(lua_State* L) {
-    // rnd(x): random number [0, x), or random element from table
+    // rnd(x) — random number [0, x), or random element from table
     if (lua_istable(L, 1)) {
         int n = luaL_len(L, 1);
         if (n == 0) return 0;
@@ -537,7 +539,7 @@ static int l_srand(lua_State* L) {
 }
 
 static int l_sub(lua_State* L) {
-    // sub(s, i, [j]): PICO-8 substring (1-indexed, inclusive end)
+    // sub(s, i, [j]) — PICO-8 substring (1-indexed, inclusive end)
     size_t len;
     const char* s = luaL_checklstring(L, 1, &len);
     int i = luaL_optinteger(L, 2, 1);
@@ -554,7 +556,7 @@ static int l_sub(lua_State* L) {
 }
 
 static int l_printh(lua_State* L) {
-    // printh(s): debug print (goes to ESP log)
+    // printh(s) — debug print (goes to ESP log)
     const char* s = lua_tostring(L, 1);
     if (s) {
         printf("[PICO-8] %s\n", s);
@@ -567,7 +569,7 @@ static int l_printh(lua_State* L) {
 static bool cartdata_enabled = false;
 
 static int l_cartdata(lua_State* L) {
-    // cartdata(id): enable persistent data access
+    // cartdata(id) — enable persistent data access
     // We accept the ID but don't actually persist to flash
     (void)luaL_checkstring(L, 1);
     cartdata_enabled = true;
@@ -576,7 +578,7 @@ static int l_cartdata(lua_State* L) {
 }
 
 static int l_dget(lua_State* L) {
-    // dget(n): read persistent slot n (0-63) as fixed-point number
+    // dget(n) — read persistent slot n (0-63) as fixed-point number
     if (!cartdata_enabled) {
         lua_pushnumber(L, 0);
         return 1;
@@ -595,7 +597,7 @@ static int l_dget(lua_State* L) {
 }
 
 static int l_dset(lua_State* L) {
-    // dset(n, val): write val to persistent slot n (0-63)
+    // dset(n, val) — write val to persistent slot n (0-63)
     if (!cartdata_enabled) return 0;
     int n = luaL_checkinteger(L, 1);
     if (n < 0 || n > 63) return 0;
@@ -677,7 +679,7 @@ static const luaL_Reg pico_api[] = {
     {"memcpy", l_memcpy},
     {"memset", l_memset},
     
-    // Table functions
+    // Table functions (PICO-8 specific)
     {"add", l_add},
     {"del", l_del},
     {"deli", l_deli},

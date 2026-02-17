@@ -1,7 +1,24 @@
+// pico_png_cart.c
+// PNG-format PICO-8 cartridge loader
+//
+// PICO-8 PNG carts (160x205 RGBA) embed cart data steganographically:
+// 2 least-significant bits per RGBA channel (ARGB order) = 1 byte per pixel.
+// Data layout: sprites(0x2000) + map(0x1000) + flags(0x100) +
+//              music(0x100) + sfx(0x1100) + code(compressed).
+// Version byte at offset 0x8000.
+//
+// Contains: minimal DEFLATE inflate, PNG decoder, LSB extractor,
+//           PICO-8 code decompression (old :c:\0 and pxa formats).
+
 #include "pico_png_cart.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Minimal DEFLATE inflate (RFC 1951)
+ * Only decompression — no zlib/gzip framing, that's handled by caller.
+ * ═══════════════════════════════════════════════════════════════════════ */
 
 typedef struct {
     const uint8_t* src;
@@ -124,7 +141,7 @@ static int inflate_raw(const uint8_t* src, size_t src_len,
         int btype = (int)inf_bits(&s, 2);
 
         if (btype == 0) {
-            /* Stored block, drain bit buffer first */
+            /* Stored block — drain bit buffer first */
             int skip = s.nbits & 7;
             if (skip) { s.bits >>= skip; s.nbits -= skip; }
             /* Read buffered bytes back, then from source */
@@ -141,7 +158,7 @@ static int inflate_raw(const uint8_t* src, size_t src_len,
                 }
             }
             uint16_t len = hdr[0] | ((uint16_t)hdr[1] << 8);
-            /* hdr[2..3] is NLEN, we trust it */
+            /* hdr[2..3] is NLEN — we trust it */
             /* Read len bytes from buffered bits then source */
             for (uint16_t i = 0; i < len; i++) {
                 if (dpos >= dst_cap) return -1;
@@ -220,7 +237,10 @@ static int inflate_raw(const uint8_t* src, size_t src_len,
     return 0;
 }
 
-// Minimal PNG decoder (RGBA only, non-interlaced)
+/* ═══════════════════════════════════════════════════════════════════════
+ * Minimal PNG decoder (RGBA only, non-interlaced)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
 static const uint8_t png_magic[8] = {
     0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
 };
@@ -510,7 +530,10 @@ static int decompress_old(const uint8_t* data, size_t data_len,
     return (int)opos;
 }
 
-// Public API: load PNG-format PICO-8 cartridge
+/* ═══════════════════════════════════════════════════════════════════════
+ * Public API: load PNG-format PICO-8 cartridge
+ * ═══════════════════════════════════════════════════════════════════════ */
+
 int pico_png_cart_load_mem(const uint8_t* data, size_t len,
                            pico_ram_t* ram, char* lua_code,
                            size_t lua_code_size, pico_cart_info_t* info) {
@@ -573,12 +596,12 @@ int pico_png_cart_load_mem(const uint8_t* data, size_t len,
 
     free(cart_data);
 
-    if (lua_len < 0) {
+    if (lua_len <= 0) {
         printf("[png_cart] Decompression failed\n");
     }
 
     if (info) {
-        info->valid = (lua_len > 0);
+        info->valid = (lua_len >= 0);
     }
 
     return lua_len;

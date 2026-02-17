@@ -2,6 +2,7 @@
 // PICO-8 graphics - matches fake-08 drawing logic
 
 #include "pico_graphics.h"
+#include "fontdata.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -160,6 +161,7 @@ static void v_line(pico_ram_t* ram, int x, int y1, int y2) {
 void pico_graphics_init(pico_graphics_t* gfx, pico_ram_t* ram) {
     memset(gfx, 0, sizeof(pico_graphics_t));
     gfx->ram = ram;
+    gfx->font_data = defaultFontBinaryData;
     pico_graphics_reset(gfx);
 }
 
@@ -558,37 +560,56 @@ void pico_mset(pico_graphics_t* gfx, int16_t x, int16_t y, uint8_t val) {
 void pico_print(pico_graphics_t* gfx, const char* str,
                 int16_t x, int16_t y, uint8_t col) {
     pico_ram_t* ram = gfx->ram;
-    
+
     if (x < 0) x = ram->ds.text_x;
     if (y < 0) y = ram->ds.text_y;
-    
+
+    const uint8_t* font = gfx->font_data;
+    int char_w = font ? font[0] : 4;
+    int char_h = font ? font[2] : 5;
     int16_t start_x = x;
-    
+
     while (*str) {
         char c = *str++;
         if (c == '\n') {
             x = start_x;
-            y += 6;
+            y += char_h + 1;
             continue;
         }
         pico_print_char(gfx, c, x, y, col);
-        x += 4;
+        x += ((uint8_t)c >= 128 && font) ? font[1] : char_w;
     }
-    
+
     ram->ds.text_x = x;
     ram->ds.text_y = y;
 }
 
 void pico_print_char(pico_graphics_t* gfx, char c,
                      int16_t x, int16_t y, uint8_t col) {
-    // TODO: proper font rendering from sprite sheet
-    // For now, draw a simple 3x5 block for visible chars
-    if (c >= 33 && c <= 126) {
-        for (int py = 0; py < 5; py++) {
-            for (int px = 0; px < 3; px++) {
-                if ((px + py) % 2 == 0) {
-                    pico_pset(gfx, x + px, y + py, col);
-                }
+    const uint8_t* font = gfx->font_data;
+    if (!font) return;
+
+    uint8_t ch = (uint8_t)c;
+    if (ch < 16) return;
+
+    int width = font[0];     /* 4 for standard font */
+    int height = font[2];    /* 5 for standard font */
+    int offset_x = font[3];
+    int offset_y = font[4];
+
+    /* Glyph data: 8 bytes per char starting from char 16, at offset 128 */
+    const uint8_t* glyph = &font[128 + (ch - 16) * 8];
+
+    /* For chars >= 128, use the wider width */
+    if (ch >= 128) {
+        width = font[1];  /* 8 for extended chars */
+    }
+
+    for (int row = 0; row < height; row++) {
+        uint8_t bits = glyph[row];
+        for (int px = 0; px < width; px++) {
+            if (bits & (1 << px)) {
+                pico_pset(gfx, x + offset_x + px, y + offset_y + row, col);
             }
         }
     }

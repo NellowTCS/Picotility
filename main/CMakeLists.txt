@@ -13,36 +13,22 @@ list(FILTER Z8LUA_SOURCES EXCLUDE REGEX "ldblib\\.c$")   # debug library (not ne
 # Add math stubs
 list(APPEND Z8LUA_SOURCES "z8lua/math_stubs.cpp")
 
-# Rename .c to .cpp for C++ compilation (z8lua needs C++ for fix32.h)
-set(Z8LUA_CPP_SOURCES "")
-foreach(src ${Z8LUA_SOURCES})
-    string(REGEX REPLACE "\\.c$" ".cpp" cpp_src ${src})
-    if(NOT EXISTS ${cpp_src} AND EXISTS ${src})
-        # Create symlink or copy - for now we'll set language directly
-        list(APPEND Z8LUA_CPP_SOURCES ${src})
-    else()
-        list(APPEND Z8LUA_CPP_SOURCES ${cpp_src})
-    endif()
-endforeach()
-
 # Collect our sources (both .c and .cpp)
 file(GLOB PICO_SOURCES "Source/*.c" "Source/*.cpp")
 
 idf_component_register(
     SRCS ${PICO_SOURCES} ${Z8LUA_SOURCES}
-    INCLUDE_DIRS "Include" "z8lua"
+    INCLUDE_DIRS "Include" "z8lua" ../../../Libraries/TactilityCpp/Include
     REQUIRES TactilitySDK
 )
 
 # Force C files in z8lua to compile as C++
 set_source_files_properties(${Z8LUA_SOURCES} PROPERTIES LANGUAGE CXX)
 
-# z8lua compile options
-target_compile_options(${COMPONENT_LIB} PRIVATE 
-    -Os                     # Optimize for size
-    -fno-exceptions         # No C++ exceptions
-    -fno-rtti               # No RTTI
-    -Wno-write-strings      # Suppress string literal warnings
+
+# z8lua compile options (applied only to z8lua sources)
+set_source_files_properties(${Z8LUA_SOURCES} PROPERTIES
+    COMPILE_OPTIONS "-Os;-fno-exceptions;-fno-rtti;-Wno-write-strings"
 )
 
 # z8lua needs longjmp for error handling since we can't use C++ exceptions
