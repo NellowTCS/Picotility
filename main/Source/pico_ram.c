@@ -84,7 +84,7 @@ uint32_t pico_peek4(pico_ram_t* ram, uint16_t addr) {
         return 0;
     }
     uint8_t* p = ((uint8_t*)ram) + addr;
-    return p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24);
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 void pico_poke4(pico_ram_t* ram, uint16_t addr, uint32_t val) {

@@ -68,7 +68,6 @@ bool pico_vm_load_cart(pico_vm_t* vm, const char* path) {
     
     if (lua_len < 0) {
         snprintf(vm->error_msg, sizeof(vm->error_msg), "Failed to load cart: %s", path);
-        printf("[ERROR] Loader: Could not load cart file: %s\n", path);
         return false;
     }
     
@@ -78,7 +77,9 @@ bool pico_vm_load_cart(pico_vm_t* vm, const char* path) {
     
     // Load Lua code into interpreter
     if (!pico_lua_load(vm, vm->lua_code, vm->lua_code_len)) {
-        printf("[ERROR] Loader: Lua load failed for cart: %s\nReason: %s\n", path, pico_lua_get_error(vm));
+        if (vm->error_msg[0] == '\0') {
+            snprintf(vm->error_msg, sizeof(vm->error_msg), "Failed to load Lua code");
+        }
         return false;
     }
     
@@ -90,7 +91,7 @@ bool pico_vm_load_cart(pico_vm_t* vm, const char* path) {
     vm->has_draw = strstr(vm->lua_code, "function _draw") != NULL;
     
     vm->target_fps = vm->has_update60 ? PICO_FPS_60 : PICO_FPS_DEFAULT;
-    printf("[INFO] Loader: Cart loaded successfully: %s\n", path);
+    
     return true;
 }
 

@@ -2,6 +2,7 @@
 // PICO-8 cartridge loading
 
 #include "pico_cart.h"
+#include "pico_png_cart.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,6 +48,7 @@ void pico_cart_parse_gfx(const char* data, size_t len, pico_ram_t* ram) {
     
     while (p < end && row < 128) {
         while (p < end && (*p == ' ' || *p == '\t')) p++;
+        if (p >= end) break;
         if (*p == '_' && p + 1 < end && *(p+1) == '_') break;
         
         int col = 0;
@@ -78,6 +80,7 @@ void pico_cart_parse_gff(const char* data, size_t len, pico_ram_t* ram) {
     
     while (p < end && sprite < 256) {
         while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) p++;
+        if (p >= end) break;
         if (*p == '_' && p + 1 < end && *(p+1) == '_') break;
         
         while (p + 1 < end && sprite < 256 && *p != '\n' && *p != '\r') {
@@ -101,6 +104,7 @@ void pico_cart_parse_map(const char* data, size_t len, pico_ram_t* ram) {
     
     while (p < end && row < 32) {
         while (p < end && (*p == ' ' || *p == '\t')) p++;
+        if (p >= end) break;
         if (*p == '_' && p + 1 < end && *(p+1) == '_') break;
         
         int col = 0;
@@ -127,6 +131,7 @@ void pico_cart_parse_sfx(const char* data, size_t len, pico_ram_t* ram) {
     
     while (p < end && sfx_idx < 64) {
         while (p < end && (*p == ' ' || *p == '\t')) p++;
+        if (p >= end) break;
         if (*p == '_' && p + 1 < end && *(p+1) == '_') break;
         if (*p == '\n' || *p == '\r') { p++; continue; }
         
@@ -164,6 +169,7 @@ void pico_cart_parse_music(const char* data, size_t len, pico_ram_t* ram) {
     
     while (p < end && pattern_idx < 64) {
         while (p < end && (*p == ' ' || *p == '\t')) p++;
+        if (p >= end) break;
         if (*p == '_' && p + 1 < end && *(p+1) == '_') break;
         if (*p == '\n' || *p == '\r') { p++; continue; }
         
@@ -193,7 +199,17 @@ int pico_cart_load_mem(const uint8_t* data, size_t len, pico_ram_t* ram,
         memset(info, 0, sizeof(pico_cart_info_t));
     }
     
+    /* Detect PNG format (0x89 'P' 'N' 'G') and delegate to PNG loader */
+    if (len >= 4 && data[0] == 0x89 && data[1] == 'P' &&
+        data[2] == 'N' && data[3] == 'G') {
+        return pico_png_cart_load_mem(data, len, ram, lua_code,
+                                      lua_code_size, info);
+    }
+
     const char* text = (const char*)data;
+    if (len < 16) {
+        return -1;
+    }
     if (strncmp(text, "pico-8 cartridge", 16) != 0) {
         return -1;
     }
@@ -289,6 +305,7 @@ int pico_cart_load_mem(const uint8_t* data, size_t len, pico_ram_t* ram,
 int pico_cart_load(const char* path, pico_ram_t* ram,
                    char* lua_code, size_t lua_code_size,
                    pico_cart_info_t* info) {
+    if (!path || !ram || !lua_code) return -1;
     FILE* f = fopen(path, "rb");
     if (!f) return -1;
     
@@ -322,6 +339,7 @@ int pico_cart_load(const char* path, pico_ram_t* ram,
 }
 
 bool pico_cart_save_data(const char* cart_path, pico_ram_t* ram) {
+    if (!cart_path || !ram) return false;
     char save_path[256];
     snprintf(save_path, sizeof(save_path), "%s.sav", cart_path);
     
@@ -335,8 +353,10 @@ bool pico_cart_save_data(const char* cart_path, pico_ram_t* ram) {
 }
 
 bool pico_cart_load_data(const char* cart_path, pico_ram_t* ram) {
+    if (!cart_path || !ram) return false;
     char save_path[256];
-    snprintf(save_path, sizeof(save_path), "%s.sav", cart_path);
+    int written = snprintf(save_path, sizeof(save_path), "%s.sav", cart_path);
+    if (written < 0 || (size_t)written >= sizeof(save_path)) return false;
     
     FILE* f = fopen(save_path, "rb");
     if (!f) return false;

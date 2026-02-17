@@ -489,11 +489,11 @@ void pico_sspr(pico_graphics_t* gfx,
     
     // Draw
     for (int py = 0; py < dh; py++) {
-        int spy = flip_y ? ((spr_y + spr_h - 1 - py * ddy) >> 16) : ((spr_y + py * ddy) >> 16);
+        int spy = flip_y ? ((spr_y + spr_h - (1 << 16) - py * ddy) >> 16) : ((spr_y + py * ddy) >> 16);
         if (spy < 0 || spy > 127) continue;
         
         for (int px = 0; px < dw; px++) {
-            int spx = flip_x ? ((spr_x + spr_w - 1 - px * ddx) >> 16) : ((spr_x + px * ddx) >> 16);
+            int spx = flip_x ? ((spr_x + spr_w - (1 << 16) - px * ddx) >> 16) : ((spr_x + px * ddx) >> 16);
             if (spx < 0 || spx > 127) continue;
             
             uint8_t col = pico_get_pixel(ram->sprites, spx, spy);

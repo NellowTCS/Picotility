@@ -78,7 +78,7 @@ typedef int32_t fix32_t;
 #define FIX32_ONE       (1 << FIX32_SHIFT)
 #define FIX32_HALF      (1 << (FIX32_SHIFT - 1))
 
-#define INT_TO_FIX32(x) ((fix32_t)((x) << FIX32_SHIFT))
+#define INT_TO_FIX32(x) ((fix32_t)((x) * FIX32_ONE))
 #define FIX32_TO_INT(x) ((int32_t)((x) >> FIX32_SHIFT))
 #define FLOAT_TO_FIX32(x) ((fix32_t)((x) * FIX32_ONE))
 #define FIX32_TO_FLOAT(x) ((float)(x) / FIX32_ONE)

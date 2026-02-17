@@ -8,6 +8,9 @@
 extern "C" {
 #endif
 
+#include <stdbool.h>
+#include <stddef.h>
+
 #include "pico_vm.h"
 
 // Initialize Lua state and register PICO-8 API
