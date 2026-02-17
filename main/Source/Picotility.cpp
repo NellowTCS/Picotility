@@ -452,6 +452,8 @@ void Picotility::onShow(AppHandle app, lv_obj_t* parent) {
     srand((unsigned)lv_tick_get());
 }
 
+Picotility::Picotility() = default;
+
 void Picotility::onHide(AppHandle app) {
     (void)app;
 

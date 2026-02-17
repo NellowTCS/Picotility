@@ -61,6 +61,8 @@ private:
     static void onCartSelected(lv_event_t* e);
 
 public:
+    Picotility();
+    
     void onShow(AppHandle context, lv_obj_t* parent) override;
     void onHide(AppHandle context) override;
 };
