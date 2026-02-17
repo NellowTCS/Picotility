@@ -491,24 +491,31 @@ static int l_foreach(lua_State* L) {
     return 0;
 }
 
-// all() iterator — returns next element each call
-static int all_iterator(lua_State* L) {
-    int i = lua_tointeger(L, lua_upvalueindex(2));
-    int n = luaL_len(L, lua_upvalueindex(1));
-    if (i > n) return 0;
-    lua_rawgeti(L, lua_upvalueindex(1), i);
-    lua_pushinteger(L, i + 1);
-    lua_replace(L, lua_upvalueindex(2));
-    return 1;
+// (adpated from zepto8)
+static int all_iterator(lua_State *L) {
+    luaL_checktype(L, 1, LUA_TTABLE);
+
+    int n = (int)lua_rawlen(L, 1);
+    int i = (int)lua_tointeger(L, 2);
+
+    while (++i <= n) {
+        lua_rawgeti(L, 1, i);         // stack: t, idx, t[i]
+        if (!lua_isnil(L, -1)) {
+            lua_pushinteger(L, i);    // stack: t, idx, t[i], i
+            lua_insert(L, -2);        // stack: t, idx, i, t[i]
+            return 2;                 // return: i, t[i]
+        }
+        lua_pop(L, 1); // remove nil value; continue loop
+    }
+    return 0; // iteration complete
 }
 
-static int l_all(lua_State* L) {
-    // all(t) — returns iterator function for use in for loops
+static int l_all(lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
-    lua_pushvalue(L, 1);       // upvalue 1: table
-    lua_pushinteger(L, 1);     // upvalue 2: index
-    lua_pushcclosure(L, all_iterator, 2);
-    return 1;
+    lua_pushcfunction(L, all_iterator);  // iterator function
+    lua_pushvalue(L, 1);                 // the table
+    lua_pushinteger(L, 0);               // start before first index
+    return 3; // returns: iterator, table, initial index
 }
 
 // PICO-8 Utility Functions
