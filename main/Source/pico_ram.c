@@ -15,9 +15,9 @@ void pico_ram_reset(pico_ram_t* ram) {
     // Clear draw state through screen (0x5F00-0x7FFF), skip persist (0x5E00-0x5EFF)
     memset(&ram->ds, 0, 0x8000 - 0x5F00);
 
-    // Default palettes: identity mapping, all colors opaque
+    // Default palettes: identity mapping, color 0 transparent (PICO-8 default)
     for (int i = 0; i < 16; i++) {
-        ram->ds.draw_pal[i] = i;       // identity, no transparency bit
+        ram->ds.draw_pal[i] = i | (i == 0 ? 0x10 : 0);  // color 0 has transparency bit set
         ram->ds.screen_pal[i] = i;
     }
 
