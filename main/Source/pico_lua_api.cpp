@@ -746,6 +746,8 @@ static int l_stat(lua_State* L) {
         case 0: lua_pushinteger(L, 0); break;  // Memory usage (KB)
         case 1: lua_pushinteger(L, 100); break;  // CPU usage (%)
         case 7: lua_pushinteger(L, g_vm->target_fps); break;  // FPS
+        case 30: lua_pushboolean(L, false); break;  // Keyboard available (no key pressed)
+        case 31: lua_pushnil(L); break;  // Keyboard character
         default: lua_pushinteger(L, 0); break;
     }
     return 1;

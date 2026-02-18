@@ -254,6 +254,9 @@ void Picotility::onKeyEvent(lv_event_t* e) {
             }
         }
     } else if (code == LV_EVENT_RELEASED) {
+        uint32_t key = lv_event_get_key(e);
+        handle_key(&self->vm.input, key, false);
+        
         /* Accelerate release: clear after next frame's cycles */
         for (int i = 0; i < NUM_BUTTONS; i++) {
             if (self->keyHold[i] > 1) {
