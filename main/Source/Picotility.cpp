@@ -145,7 +145,7 @@ void Picotility::renderDisplay(bool forceFull) {
             int px = i * 2;
             int lo = fb[i] & 0x0F;
             int hi = (fb[i] >> 4) & 0x0F;
-            buf[px] = pico_palette_565[lo];
+            buf[px]     = pico_palette_565[lo];
             buf[px + 1] = pico_palette_565[hi];
         }
     }
@@ -256,7 +256,7 @@ void Picotility::onKeyEvent(lv_event_t* e) {
     } else if (code == LV_EVENT_RELEASED) {
         uint32_t key = lv_event_get_key(e);
         handle_key(&self->vm.input, key, false);
-        
+
         /* Accelerate release: clear after next frame's cycles */
         for (int i = 0; i < NUM_BUTTONS; i++) {
             if (self->keyHold[i] > 1) {
@@ -326,7 +326,6 @@ void Picotility::onCartSelected(lv_event_t* e) {
 void Picotility::buildCartList(lv_obj_t* list) {
     free_cart_paths();
 
-    /* Ensure directory exists, then scan */
     ensure_cart_dir();
     DIR* dir = opendir(CART_DIR);
     if (!dir) {
@@ -340,7 +339,6 @@ void Picotility::buildCartList(lv_obj_t* list) {
         size_t len = strlen(name);
         if (len < 4) continue;
 
-        /* Accept .p8 and .p8.png extensions */
         bool valid = false;
         if (len >= 7 && ci_strcmp(&name[len - 7], ".p8.png") == 0) {
             valid = true;
@@ -349,13 +347,11 @@ void Picotility::buildCartList(lv_obj_t* list) {
         }
         if (!valid) continue;
 
-        /* Allocate path string */
         size_t path_len = strlen(CART_DIR) + 1 + len + 1;
         char* path = (char*)malloc(path_len);
         if (!path) break;
         snprintf(path, path_len, CART_DIR "/%s", name);
 
-        /* Grow the pointer array */
         char** tmp = (char**)realloc(cart_paths, sizeof(char*) * (cart_count + 1));
         if (!tmp) {
             free(path);
@@ -381,7 +377,6 @@ void Picotility::buildCartList(lv_obj_t* list) {
 void Picotility::onShow(AppHandle app, lv_obj_t* parent) {
     g_instance = this;
 
-    // Zero-init relevant state
     memset(&vm, 0, sizeof(vm));
     parentWidget = parent;
     state = AppState::CartSelect;
@@ -451,7 +446,6 @@ void Picotility::onShow(AppHandle app, lv_obj_t* parent) {
     /* Emulation timer (starts paused — only runs when Running) */
     emuTimer = lv_timer_create(emuTimerCb, 1000 / PICO_FPS_DEFAULT, nullptr);
 
-    /* Seed random */
     srand((unsigned)lv_tick_get());
 }
 
@@ -459,6 +453,10 @@ Picotility::Picotility() = default;
 
 void Picotility::onHide(AppHandle app) {
     (void)app;
+
+    // Null g_instance first so no timer callback or other static handler
+    // can fire and dereference a partially-torn-down instance during shutdown.
+    g_instance = nullptr;
 
     if (emuTimer) {
         lv_timer_delete(emuTimer);
@@ -476,6 +474,4 @@ void Picotility::onHide(AppHandle app) {
     statusLabel = nullptr;
     cartList = nullptr;
     parentWidget = nullptr;
-
-    g_instance = nullptr;
 }

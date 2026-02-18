@@ -10,24 +10,23 @@ void pico_ram_init(pico_ram_t* ram) {
 }
 
 void pico_ram_reset(pico_ram_t* ram) {
-    // Clear up to general RAM (keep persistent data)
-    memset(ram, 0, 0x4300);
-    // Clear draw state through screen
-    memset(&ram->ds, 0, 0x8000 - 0x5f00);
-    
-    // Default palettes (identity, color 0 transparent by default)
+    // Clear everything up to (but not including) persistent cart data
+    memset(ram, 0, 0x5E00);
+    // Clear draw state through screen (0x5F00-0x7FFF), skip persist (0x5E00-0x5EFF)
+    memset(&ram->ds, 0, 0x8000 - 0x5F00);
+
+    // Default palettes: identity mapping, all colors opaque
     for (int i = 0; i < 16; i++) {
-        ram->ds.draw_pal[i] = i;
+        ram->ds.draw_pal[i] = i;       // identity, no transparency bit
         ram->ds.screen_pal[i] = i;
     }
-    ram->ds.draw_pal[0] = 0x10;  // Color 0 transparent by default
-    
+
     // Default clip rect (full screen, exclusive end)
     ram->ds.clip_xb = 0;
     ram->ds.clip_yb = 0;
     ram->ds.clip_xe = 128;
     ram->ds.clip_ye = 128;
-    
+
     ram->ds.color = 6;  // Light gray default
     ram->ds.text_x = 0;
     ram->ds.text_y = 0;
@@ -37,7 +36,7 @@ void pico_ram_reset(pico_ram_t* ram) {
     ram->ds.fillp[1] = 0;
     ram->ds.fillp_trans = 0;
     ram->ds.line_invalid = 1;
-    
+
     // Hardware defaults (match fake-08)
     ram->hw.color_bitmask = 0xFF;
     ram->hw.spr_mem_map = 0x00;

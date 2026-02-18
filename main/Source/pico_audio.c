@@ -17,7 +17,7 @@ static const fix32_t NOTE_FREQ[] = {
 int16_t pico_wave_sample(pico_waveform_t wave, uint32_t phase, uint16_t* lfsr) {
     uint32_t pos = phase >> 16;
     int32_t sample = 0;
-    
+
     switch (wave) {
         case PICO_WAVE_TRIANGLE:
             if (pos < 0x8000) {
@@ -26,7 +26,7 @@ int16_t pico_wave_sample(pico_waveform_t wave, uint32_t phase, uint16_t* lfsr) {
                 sample = 0x8000 - ((pos - 0x8000) * 2);
             }
             break;
-            
+
         case PICO_WAVE_TILTED:
             if (pos < 0xE000) {
                 sample = (pos * 0x10000 / 0xE000) - 0x8000;
@@ -34,19 +34,19 @@ int16_t pico_wave_sample(pico_waveform_t wave, uint32_t phase, uint16_t* lfsr) {
                 sample = 0x8000 - ((pos - 0xE000) * 0x10000 / 0x2000);
             }
             break;
-            
+
         case PICO_WAVE_SAWTOOTH:
             sample = pos - 0x8000;
             break;
-            
+
         case PICO_WAVE_SQUARE:
             sample = (pos < 0x8000) ? -0x7FFF : 0x7FFF;
             break;
-            
+
         case PICO_WAVE_PULSE:
             sample = (pos < 0x4000) ? -0x7FFF : 0x7FFF;
             break;
-            
+
         case PICO_WAVE_ORGAN:
             {
                 int32_t t1, t2;
@@ -64,16 +64,16 @@ int16_t pico_wave_sample(pico_waveform_t wave, uint32_t phase, uint16_t* lfsr) {
                 sample = (t1 + t2 / 2) * 2 / 3;
             }
             break;
-            
+
         case PICO_WAVE_NOISE:
             {
-                uint16_t bit = ((*lfsr >> 0) ^ (*lfsr >> 2) ^ 
+                uint16_t bit = ((*lfsr >> 0) ^ (*lfsr >> 2) ^
                                (*lfsr >> 3) ^ (*lfsr >> 5)) & 1;
                 *lfsr = (*lfsr >> 1) | (bit << 15);
                 sample = ((*lfsr & 0xFFFF) - 0x8000);
             }
             break;
-            
+
         case PICO_WAVE_PHASER:
             {
                 uint32_t pos2 = (pos + 0x4000) & 0xFFFF;
@@ -81,7 +81,7 @@ int16_t pico_wave_sample(pico_waveform_t wave, uint32_t phase, uint16_t* lfsr) {
             }
             break;
     }
-    
+
     return (int16_t)(sample >> 1);
 }
 
@@ -89,12 +89,12 @@ void pico_audio_init(pico_audio_t* audio, pico_ram_t* ram) {
     memset(audio, 0, sizeof(pico_audio_t));
     audio->ram = ram;
     audio->master_volume = 255;
-    
+
     for (int i = 0; i < PICO_CHANNELS; i++) {
         audio->channels[i].sfx_index = -1;
         audio->channels[i].noise_lfsr = 0xACE1;
     }
-    
+
     audio->music.pattern_index = -1;
 }
 
@@ -115,7 +115,7 @@ fix32_t pico_note_to_freq(uint8_t note) {
     return NOTE_FREQ[note];
 }
 
-void pico_sfx(pico_audio_t* audio, int8_t n, int8_t channel, 
+void pico_sfx(pico_audio_t* audio, int8_t n, int8_t channel,
               uint8_t offset, uint8_t length) {
     if (n < 0) {
         if (channel >= 0 && channel < PICO_CHANNELS) {
@@ -123,9 +123,9 @@ void pico_sfx(pico_audio_t* audio, int8_t n, int8_t channel,
         }
         return;
     }
-    
+
     if (n >= PICO_SFX_COUNT) return;
-    
+
     if (channel < 0) {
         for (int i = 0; i < PICO_CHANNELS; i++) {
             if (audio->channels[i].sfx_index < 0) {
@@ -135,49 +135,63 @@ void pico_sfx(pico_audio_t* audio, int8_t n, int8_t channel,
         }
         if (channel < 0) channel = 0;
     }
-    
+
     if (channel >= PICO_CHANNELS) return;
-    
+
     pico_channel_t* ch = &audio->channels[channel];
     pico_sfx_t* sfx = &audio->ram->sfx[n];
-    
+
     ch->sfx_index = n;
     ch->note_index = offset;
     ch->sample_counter = 0;
     ch->phase = 0;
-    
+
     uint32_t speed = sfx->speed;
     if (speed == 0) speed = 1;
     ch->samples_per_tick = (PICO_SAMPLE_RATE * speed) / 120;
+
+    if (offset < PICO_NOTES_PER_SFX) {
+        pico_note_t* note = &sfx->notes[offset];
+        uint8_t pitch     = pico_note_key(note);
+        ch->waveform      = pico_note_waveform(note);
+        ch->volume        = pico_note_volume(note);
+        ch->effect        = pico_note_effect(note);
+        ch->base_frequency = pico_note_to_freq(pitch);
+        ch->frequency      = ch->base_frequency;
+        ch->phase_inc      = ((uint64_t)ch->frequency * 65536) / PICO_SAMPLE_RATE;
+    }
+
+    (void)length;  // length limiting not yet implemented
 }
 
-void pico_music(pico_audio_t* audio, int8_t n, uint16_t fade_ms, 
+void pico_music(pico_audio_t* audio, int8_t n, uint16_t fade_ms,
                 uint8_t channel_mask) {
     if (n < 0) {
         audio->music.pattern_index = -1;
         return;
     }
-    
+
     if (n >= PICO_MUSIC_COUNT) return;
-    
+
     audio->music.pattern_index = n;
     audio->music.tick = 0;
     audio->music.loop_enabled = true;
-    
+
     (void)fade_ms;
     (void)channel_mask;
 }
 
 static void update_channel(pico_audio_t* audio, pico_channel_t* ch) {
     if (ch->sfx_index < 0) return;
-    
+
     pico_sfx_t* sfx = &audio->ram->sfx[ch->sfx_index];
-    
+
+    // Advance tick counter
     ch->sample_counter++;
     if (ch->sample_counter >= ch->samples_per_tick) {
         ch->sample_counter = 0;
         ch->note_index++;
-        
+
         if (ch->note_index >= PICO_NOTES_PER_SFX) {
             if (sfx->loop_start < sfx->loop_end) {
                 ch->note_index = sfx->loop_start;
@@ -186,47 +200,63 @@ static void update_channel(pico_audio_t* audio, pico_channel_t* ch) {
                 return;
             }
         }
-        
-        ch->phase = 0;
+
+        ch->phase = 0;  // Reset phase at note boundary
     }
-    
+
+    // Read current note data (done every tick so phase_inc is always current)
     pico_note_t* note = &sfx->notes[ch->note_index];
-    
-    uint8_t pitch = pico_note_key(note);
-    ch->waveform = pico_note_waveform(note);
-    ch->volume = pico_note_volume(note);
-    ch->effect = pico_note_effect(note);
-    
+    uint8_t pitch     = pico_note_key(note);
+    ch->waveform      = pico_note_waveform(note);
+    ch->volume        = pico_note_volume(note);
+    ch->effect        = pico_note_effect(note);
+
     ch->base_frequency = pico_note_to_freq(pitch);
-    ch->frequency = ch->base_frequency;
-    ch->phase_inc = (ch->frequency * 65536) / PICO_SAMPLE_RATE;
+    ch->frequency      = ch->base_frequency;
+    // phase_inc is now always set before the first sample of a new note
+    ch->phase_inc      = ((uint64_t)ch->frequency * 65536) / PICO_SAMPLE_RATE;
 }
 
 void pico_audio_fill(pico_audio_t* audio, int16_t* out, uint16_t samples) {
     for (uint16_t i = 0; i < samples; i++) {
         int32_t mix = 0;
-        
+
         for (int c = 0; c < PICO_CHANNELS; c++) {
             pico_channel_t* ch = &audio->channels[c];
-            
+
             if (ch->sfx_index < 0) continue;
-            
+
+            // Advance tick/note state and refresh note parameters
             update_channel(audio, ch);
-            
+
             if (ch->sfx_index < 0) continue;
-            
-            int16_t sample = pico_wave_sample(ch->waveform, ch->phase, &ch->noise_lfsr);
+
+            int16_t sample;
+            if (ch->waveform == PICO_WAVE_NOISE) {
+                // higher notes = faster noise texture
+                uint32_t prev_phase = ch->phase;
+                ch->phase += ch->phase_inc;
+                if ((ch->phase ^ prev_phase) & 0x10000) {
+                    // Phase wrapped — clock LFSR
+                    uint16_t bit = ((ch->noise_lfsr >> 0) ^ (ch->noise_lfsr >> 2) ^
+                                    (ch->noise_lfsr >> 3) ^ (ch->noise_lfsr >> 5)) & 1;
+                    ch->noise_lfsr = (ch->noise_lfsr >> 1) | (bit << 15);
+                }
+                sample = (int16_t)((ch->noise_lfsr - 0x8000) >> 1);
+            } else {
+                sample = pico_wave_sample(ch->waveform, ch->phase, &ch->noise_lfsr);
+                ch->phase += ch->phase_inc;
+            }
+
             sample = (sample * ch->volume * 32) / 256;
-            ch->phase += ch->phase_inc;
-            
             mix += sample;
         }
-        
+
         if (mix > 32767) mix = 32767;
         if (mix < -32768) mix = -32768;
-        
+
         mix = (mix * audio->master_volume) / 256;
-        
+
         out[i] = (int16_t)mix;
     }
 }

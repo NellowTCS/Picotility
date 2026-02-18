@@ -45,25 +45,37 @@ static int l_pget(lua_State* L) {
 }
 
 static int l_line(lua_State* L) {
-    int16_t x0 = lua_tointeger(L, 1);
-    int16_t y0 = lua_tointeger(L, 2);
-    int16_t x1, y1;
+    pico_ram_t* ram = RAM;
+
+    int16_t x0, y0, x1, y1;
     uint8_t c;
-    
-    if (lua_gettop(L) >= 4) {
+    int nargs = lua_gettop(L);
+
+    if (nargs >= 4) {
+        // Explicit two-point form
+        x0 = lua_tointeger(L, 1);
+        y0 = lua_tointeger(L, 2);
         x1 = lua_tointeger(L, 3);
         y1 = lua_tointeger(L, 4);
-        c = luaL_optinteger(L, 5, RAM->ds.color);
+        c  = luaL_optinteger(L, 5, ram->ds.color);
+        pico_line(GFX, x0, y0, x1, y1, c);
     } else {
-        // Line from last position
-        x1 = x0;
-        y1 = y0;
-        x0 = RAM->ds.line_x;
-        y0 = RAM->ds.line_y;
-        c = luaL_optinteger(L, 3, RAM->ds.color);
+        // Draw from last saved endpoint to new point
+        x1 = lua_tointeger(L, 1);
+        y1 = lua_tointeger(L, 2);
+        c  = luaL_optinteger(L, 3, ram->ds.color);
+
+        if (ram->ds.line_invalid) {
+            // just record the endpoint and clear the flag
+            ram->ds.line_x = x1;
+            ram->ds.line_y = y1;
+            ram->ds.line_invalid = 0;
+        } else {
+            x0 = ram->ds.line_x;
+            y0 = ram->ds.line_y;
+            pico_line(GFX, x0, y0, x1, y1, c);
+        }
     }
-    
-    pico_line(GFX, x0, y0, x1, y1, c);
     return 0;
 }
 
@@ -245,7 +257,7 @@ static int l_pal(lua_State* L) {
     } else {
         uint8_t c0 = lua_tointeger(L, 1);
         uint8_t c1 = luaL_optinteger(L, 2, c0);
-        uint8_t p = luaL_optinteger(L, 3, 0);
+        uint8_t p  = luaL_optinteger(L, 3, 0);
         pico_pal(GFX, c0, c1, p);
     }
     return 0;
@@ -267,20 +279,21 @@ static int l_fillp(lua_State* L) {
 static int l_print(lua_State* L) {
     const char* str = lua_tostring(L, 1);
     if (!str) return 0;
-    
+
     int16_t x, y;
     uint8_t c;
-    
+
     if (lua_gettop(L) >= 3) {
         x = lua_tointeger(L, 2);
         y = lua_tointeger(L, 3);
         c = luaL_optinteger(L, 4, RAM->ds.color);
     } else {
+        // No coordinates given — use and advance the cursor
         x = RAM->ds.text_x;
         y = RAM->ds.text_y;
         c = luaL_optinteger(L, 2, RAM->ds.color);
     }
-    
+
     pico_print(GFX, str, x, y, c);
     return 0;
 }
@@ -384,9 +397,9 @@ static int l_poke4(lua_State* L) {
 
 static int l_memcpy(lua_State* L) {
     uint16_t dest = lua_tointeger(L, 1);
-    uint16_t src = lua_tointeger(L, 2);
-    uint16_t len = lua_tointeger(L, 3);
-    
+    uint16_t src  = lua_tointeger(L, 2);
+    uint16_t len  = lua_tointeger(L, 3);
+
     if (len <= PICO_RAM_SIZE && dest <= PICO_RAM_SIZE - len && src <= PICO_RAM_SIZE - len) {
         memmove(((uint8_t*)RAM) + dest, ((uint8_t*)RAM) + src, len);
     }
@@ -395,9 +408,9 @@ static int l_memcpy(lua_State* L) {
 
 static int l_memset(lua_State* L) {
     uint16_t dest = lua_tointeger(L, 1);
-    uint8_t val = lua_tointeger(L, 2);
-    uint16_t len = lua_tointeger(L, 3);
-    
+    uint8_t  val  = lua_tointeger(L, 2);
+    uint16_t len  = lua_tointeger(L, 3);
+
     if (len <= PICO_RAM_SIZE && dest <= PICO_RAM_SIZE - len) {
         memset(((uint8_t*)RAM) + dest, val, len);
     }
@@ -405,7 +418,6 @@ static int l_memset(lua_State* L) {
 }
 
 static int l_chr(lua_State* L) {
-    // chr(c1, [c2, ...]) — convert numbers to characters
     int n = lua_gettop(L);
     char buf[256];
     int len = 0;
@@ -420,17 +432,13 @@ static int l_chr(lua_State* L) {
     return 1;
 }
 
-// PICO-8 Table Functions (not provided by z8lua or standard Lua)
-
 static int l_add(lua_State* L) {
-    // add(t, v, [i]) — insert v into table t, return v
     luaL_checktype(L, 1, LUA_TTABLE);
     int n = luaL_len(L, 1);
     if (lua_gettop(L) >= 3 && !lua_isnil(L, 3)) {
         int i = lua_tointeger(L, 3);
         if (i < 1) i = 1;
         if (i > n + 1) i = n + 1;
-        // Shift elements up
         for (int j = n; j >= i; j--) {
             lua_rawgeti(L, 1, j);
             lua_rawseti(L, 1, j + 1);
@@ -446,14 +454,12 @@ static int l_add(lua_State* L) {
 }
 
 static int l_del(lua_State* L) {
-    // del(t, v) — delete first occurrence of v from t, return v
     if (!lua_istable(L, 1)) return 0;
     int n = luaL_len(L, 1);
     for (int i = 1; i <= n; i++) {
         lua_rawgeti(L, 1, i);
         if (lua_rawequal(L, -1, 2)) {
             lua_pop(L, 1);
-            // Shift elements down
             for (int j = i; j < n; j++) {
                 lua_rawgeti(L, 1, j + 1);
                 lua_rawseti(L, 1, j);
@@ -469,12 +475,11 @@ static int l_del(lua_State* L) {
 }
 
 static int l_deli(lua_State* L) {
-    // deli(t, [i]) — delete element at index i (default: last), return it
     if (!lua_istable(L, 1)) return 0;
     int n = luaL_len(L, 1);
     int i = luaL_optinteger(L, 2, n);
     if (i < 1 || i > n) return 0;
-    lua_rawgeti(L, 1, i); // return value
+    lua_rawgeti(L, 1, i);
     for (int j = i; j < n; j++) {
         lua_rawgeti(L, 1, j + 1);
         lua_rawseti(L, 1, j);
@@ -485,7 +490,6 @@ static int l_deli(lua_State* L) {
 }
 
 static int l_count(lua_State* L) {
-    // count(t, [v]) — count elements, or occurrences of v
     if (!lua_istable(L, 1)) {
         lua_pushinteger(L, 0);
         return 1;
@@ -506,9 +510,8 @@ static int l_count(lua_State* L) {
 }
 
 static int l_foreach(lua_State* L) {
-    // foreach(t, f) — call f(v) for each element in t
     if (lua_isnil(L, 1)) {
-        return 0;  // Do nothing if table is nil
+        return 0;
     }
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_checktype(L, 2, LUA_TFUNCTION);
@@ -521,7 +524,6 @@ static int l_foreach(lua_State* L) {
     return 0;
 }
 
-// all() iterator: returns next element each call
 static int all_iterator(lua_State* L) {
     int i = lua_tointeger(L, lua_upvalueindex(2));
     int n = luaL_len(L, lua_upvalueindex(1));
@@ -533,10 +535,9 @@ static int all_iterator(lua_State* L) {
 }
 
 static int l_all(lua_State* L) {
-    // all(t): returns iterator function for use in for loops
     luaL_checktype(L, 1, LUA_TTABLE);
-    lua_pushvalue(L, 1);       // upvalue 1: table
-    lua_pushinteger(L, 1);     // upvalue 2: index
+    lua_pushvalue(L, 1);
+    lua_pushinteger(L, 1);
     lua_pushcclosure(L, all_iterator, 2);
     return 1;
 }
@@ -546,7 +547,6 @@ static int l_all(lua_State* L) {
 static uint32_t rng_state = 1;
 
 static int l_rnd(lua_State* L) {
-    // rnd(x) — random number [0, x), or random element from table
     if (lua_istable(L, 1)) {
         int n = luaL_len(L, 1);
         if (n == 0) return 0;
@@ -565,16 +565,17 @@ static int l_rnd(lua_State* L) {
 static int l_srand(lua_State* L) {
     rng_state = (uint32_t)lua_tointeger(L, 1);
     if (rng_state == 0) rng_state = 1;
+    // Also seed the hardware RNG registers so peek(0x5f44) reflects it
+    RAM->hw.rng[0] = rng_state;
+    RAM->hw.rng[1] = rng_state ^ 0xDEADBEEF;
     return 0;
 }
 
 static int l_sub(lua_State* L) {
-    // sub(s, i, [j]) — PICO-8 substring (1-indexed, inclusive end)
     size_t len;
     const char* s = luaL_checklstring(L, 1, &len);
     int i = luaL_optinteger(L, 2, 1);
     int j = luaL_optinteger(L, 3, (int)len);
-    // Convert to 0-indexed
     if (i < 1) i = 1;
     if (j > (int)len) j = (int)len;
     if (i > j) {
@@ -586,7 +587,6 @@ static int l_sub(lua_State* L) {
 }
 
 static int l_printh(lua_State* L) {
-    // printh(s) — debug print (goes to ESP log)
     const char* s = lua_tostring(L, 1);
     if (s) {
         printf("[PICO-8] %s\n", s);
@@ -595,29 +595,25 @@ static int l_printh(lua_State* L) {
 }
 
 static int l_split(lua_State* L) {
-    // split(s, [sep], [convert]) — split string into table
-    // If sep is nil or not provided, split into individual characters
-    // If convert is false, don't convert numbers
     if (lua_gettop(L) < 1 || lua_isnil(L, 1)) {
-        lua_newtable(L);  // Return empty table instead of nil
+        lua_newtable(L);
         return 1;
     }
-    
+
     const char* str = luaL_checkstring(L, 1);
     const char* sep = NULL;
     bool convert = true;
-    
+
     if (lua_gettop(L) >= 2 && !lua_isnil(L, 2)) {
         sep = lua_tostring(L, 2);
     }
     if (lua_gettop(L) >= 3) {
         convert = lua_toboolean(L, 3);
     }
-    
+
     lua_newtable(L);
-    
+
     if (sep == NULL) {
-        // Split into individual characters
         int idx = 1;
         while (*str) {
             char c[2] = {*str, '\0'};
@@ -626,10 +622,8 @@ static int l_split(lua_State* L) {
             str++;
         }
     } else {
-        // Split by separator
         size_t sep_len = strlen(sep);
         if (sep_len == 0) {
-            // Empty separator: split into chars
             int idx = 1;
             while (*str) {
                 char c[2] = {*str, '\0'};
@@ -643,22 +637,19 @@ static int l_split(lua_State* L) {
             const char* p = str;
             while (*p) {
                 if (strncmp(p, sep, sep_len) == 0) {
-                    size_t len = p - start;
-                    if (len > 0 || convert) {
-                        if (convert) {
-                            // Try to convert to number
-                            char* end;
-                            double num = strtod(start, &end);
-                            if (end == start + len) {
-                                lua_pushnumber(L, num);
-                            } else {
-                                lua_pushlstring(L, start, len);
-                            }
+                    size_t slen = p - start;
+                    if (convert) {
+                        char* end;
+                        double num = strtod(start, &end);
+                        if ((size_t)(end - start) == slen) {
+                            lua_pushnumber(L, num);
                         } else {
-                            lua_pushlstring(L, start, len);
+                            lua_pushlstring(L, start, slen);
                         }
-                        lua_rawseti(L, -2, idx++);
+                    } else {
+                        lua_pushlstring(L, start, slen);
                     }
+                    lua_rawseti(L, -2, idx++);
                     start = p + sep_len;
                     p = start;
                 } else {
@@ -666,21 +657,19 @@ static int l_split(lua_State* L) {
                 }
             }
             // Last segment
-            size_t len = p - start;
-            if (len > 0 || convert) {
-                if (convert) {
-                    char* end;
-                    double num = strtod(start, &end);
-                    if (end == start + len) {
-                        lua_pushnumber(L, num);
-                    } else {
-                        lua_pushlstring(L, start, len);
-                    }
+            size_t slen = p - start;
+            if (convert) {
+                char* end;
+                double num = strtod(start, &end);
+                if ((size_t)(end - start) == slen) {
+                    lua_pushnumber(L, num);
                 } else {
-                    lua_pushlstring(L, start, len);
+                    lua_pushlstring(L, start, slen);
                 }
-                lua_rawseti(L, -2, idx++);
+            } else {
+                lua_pushlstring(L, start, slen);
             }
+            lua_rawseti(L, -2, idx++);
         }
     }
     return 1;
@@ -691,8 +680,6 @@ static int l_split(lua_State* L) {
 static bool cartdata_enabled = false;
 
 static int l_cartdata(lua_State* L) {
-    // cartdata(id) — enable persistent data access
-    // We accept the ID but don't actually persist to flash
     (void)luaL_checkstring(L, 1);
     cartdata_enabled = true;
     lua_pushboolean(L, 1);
@@ -700,7 +687,6 @@ static int l_cartdata(lua_State* L) {
 }
 
 static int l_dget(lua_State* L) {
-    // dget(n) — read persistent slot n (0-63) as fixed-point number
     if (!cartdata_enabled) {
         lua_pushnumber(L, 0);
         return 1;
@@ -710,7 +696,6 @@ static int l_dget(lua_State* L) {
         lua_pushnumber(L, 0);
         return 1;
     }
-    // Read 4 bytes from persist area as 16.16 fixed-point (little-endian)
     uint8_t* p = RAM->persist + n * 4;
     int32_t raw = (int32_t)(p[0] | ((uint32_t)p[1] << 8) |
                             ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24));
@@ -719,7 +704,6 @@ static int l_dget(lua_State* L) {
 }
 
 static int l_dset(lua_State* L) {
-    // dset(n, val) — write val to persistent slot n (0-63)
     if (!cartdata_enabled) return 0;
     int n = luaL_checkinteger(L, 1);
     if (n < 0 || n > 63) return 0;
@@ -743,11 +727,14 @@ static int l_time(lua_State* L) {
 static int l_stat(lua_State* L) {
     int n = lua_tointeger(L, 1);
     switch (n) {
-        case 0: lua_pushinteger(L, 0); break;  // Memory usage (KB)
-        case 1: lua_pushinteger(L, 100); break;  // CPU usage (%)
-        case 7: lua_pushinteger(L, g_vm->target_fps); break;  // FPS
-        case 30: lua_pushboolean(L, false); break;  // Keyboard available (no key pressed)
-        case 31: lua_pushnil(L); break;  // Keyboard character
+        // stat(0) should return Lua memory used in KB.
+        // Returning a plausible constant avoids carts thinking they have
+        // unlimited memory and also satisfies memory-check guards (hacky :/ )
+        case 0:  lua_pushinteger(L, 40); break;   // ~40KB Lua heap used (approx)
+        case 1:  lua_pushinteger(L, 100); break;  // CPU usage %
+        case 7:  lua_pushinteger(L, g_vm->target_fps); break;
+        case 30: lua_pushboolean(L, false); break; // Keyboard key held
+        case 31: lua_pushnil(L); break;            // Last key char
         default: lua_pushinteger(L, 0); break;
     }
     return 1;
@@ -757,77 +744,77 @@ static int l_stat(lua_State* L) {
 
 static const luaL_Reg pico_api[] = {
     // Graphics
-    {"cls", l_cls},
-    {"pset", l_pset},
-    {"pget", l_pget},
-    {"line", l_line},
-    {"rect", l_rect},
+    {"cls",      l_cls},
+    {"pset",     l_pset},
+    {"pget",     l_pget},
+    {"line",     l_line},
+    {"rect",     l_rect},
     {"rectfill", l_rectfill},
-    {"circ", l_circ},
+    {"circ",     l_circ},
     {"circfill", l_circfill},
-    {"oval", l_oval},
+    {"oval",     l_oval},
     {"ovalfill", l_ovalfill},
-    {"spr", l_spr},
-    {"sspr", l_sspr},
-    {"map", l_map},
-    {"mapdraw", l_map},
-    {"mget", l_mget},
-    {"mset", l_mset},
-    {"fget", l_fget},
-    {"fset", l_fset},
-    {"sget", l_sget},
-    {"sset", l_sset},
-    {"camera", l_camera},
-    {"clip", l_clip},
-    {"color", l_color},
-    {"pal", l_pal},
-    {"palt", l_palt},
-    {"fillp", l_fillp},
-    {"print", l_print},
-    {"cursor", l_cursor},
-    
+    {"spr",      l_spr},
+    {"sspr",     l_sspr},
+    {"map",      l_map},
+    {"mapdraw",  l_map},
+    {"mget",     l_mget},
+    {"mset",     l_mset},
+    {"fget",     l_fget},
+    {"fset",     l_fset},
+    {"sget",     l_sget},
+    {"sset",     l_sset},
+    {"camera",   l_camera},
+    {"clip",     l_clip},
+    {"color",    l_color},
+    {"pal",      l_pal},
+    {"palt",     l_palt},
+    {"fillp",    l_fillp},
+    {"print",    l_print},
+    {"cursor",   l_cursor},
+
     // Input
-    {"btn", l_btn},
+    {"btn",  l_btn},
     {"btnp", l_btnp},
-    
+
     // Audio
-    {"sfx", l_sfx},
+    {"sfx",   l_sfx},
     {"music", l_music},
-    
+
     // Memory
-    {"peek", l_peek},
-    {"poke", l_poke},
-    {"peek2", l_peek2},
-    {"poke2", l_poke2},
-    {"peek4", l_peek4},
-    {"poke4", l_poke4},
+    {"peek",   l_peek},
+    {"poke",   l_poke},
+    {"peek2",  l_peek2},
+    {"poke2",  l_poke2},
+    {"peek4",  l_peek4},
+    {"poke4",  l_poke4},
     {"memcpy", l_memcpy},
     {"memset", l_memset},
-    {"chr", l_chr},
-    
+    {"chr",    l_chr},
+
     // Table functions (PICO-8 specific)
-    {"add", l_add},
-    {"del", l_del},
-    {"deli", l_deli},
-    {"count", l_count},
+    {"add",     l_add},
+    {"del",     l_del},
+    {"deli",    l_deli},
+    {"count",   l_count},
     {"foreach", l_foreach},
-    {"all", l_all},
+    {"all",     l_all},
 
     // Utility
-    {"rnd", l_rnd},
-    {"srand", l_srand},
-    {"sub", l_sub},
-    {"split", l_split},
+    {"rnd",    l_rnd},
+    {"srand",  l_srand},
+    {"sub",    l_sub},
+    {"split",  l_split},
     {"printh", l_printh},
 
     // Persistent data
     {"cartdata", l_cartdata},
-    {"dget", l_dget},
-    {"dset", l_dset},
+    {"dget",     l_dget},
+    {"dset",     l_dset},
 
     // System
     {"time", l_time},
-    {"t", l_time},
+    {"t",    l_time},
     {"stat", l_stat},
 
     {NULL, NULL}
@@ -836,12 +823,11 @@ static const luaL_Reg pico_api[] = {
 static void register_api(lua_State* L) {
     lua_pushglobaltable(L);
     luaL_setfuncs(L, pico_api, 0);
-    
-    // Add unpack (table.unpack)
+
+    // Expose table.unpack as the global unpack
     lua_getglobal(L, "table");
     lua_getfield(L, -1, "unpack");
     lua_setglobal(L, "unpack");
-    
     lua_pop(L, 1);
 }
 
@@ -858,14 +844,14 @@ bool pico_lua_init(pico_vm_t* vm) {
         snprintf(vm->error_msg, sizeof(vm->error_msg), "Failed to create Lua state");
         return false;
     }
-    
+
     // Provide memory to z8lua for @ % $ operators
     lua_setpico8memory(L, (const unsigned char*)&vm->ram);
-    
-    // Open standard libraries (base, pico8, table, string, coroutine)
+
+    // Open standard libraries
     luaL_openlibs(L);
-    
-    // Register our API functions
+
+    // Register PICO-8 API
     register_api(L);
 
     // Seed RNG
@@ -886,27 +872,28 @@ void pico_lua_shutdown(pico_vm_t* vm) {
 bool pico_lua_load(pico_vm_t* vm, const char* code, size_t len) {
     lua_State* L = (lua_State*)vm->lua_state;
     if (!L) return false;
-    
+
     int err = luaL_loadbuffer(L, code, len, "cart");
     if (err != LUA_OK) {
-        snprintf(vm->error_msg, sizeof(vm->error_msg), "Load error: %s", 
+        snprintf(vm->error_msg, sizeof(vm->error_msg), "Load error: %s",
                  lua_tostring(L, -1));
         lua_pop(L, 1);
         return false;
     }
-    
+
     err = lua_pcall(L, 0, 0, 0);
     if (err != LUA_OK) {
-        snprintf(vm->error_msg, sizeof(vm->error_msg), "Run error: %s", 
+        snprintf(vm->error_msg, sizeof(vm->error_msg), "Run error: %s",
                  lua_tostring(L, -1));
         lua_pop(L, 1);
         return false;
     }
-    
+
     return true;
 }
 
-static bool call_function(lua_State* L, const char* name, char* error_buf, size_t buf_size) {
+static bool call_function(lua_State* L, const char* name,
+                          char* error_buf, size_t buf_size) {
     if (!L) {
         snprintf(error_buf, buf_size, "Lua state not initialized");
         return false;
@@ -914,35 +901,37 @@ static bool call_function(lua_State* L, const char* name, char* error_buf, size_
     lua_getglobal(L, name);
     if (!lua_isfunction(L, -1)) {
         lua_pop(L, 1);
-        return true;  // Not an error, function just doesn't exist
+        error_buf[0] = '\0';  // Explicitly clear, not an error, just absent
+        return true;
     }
-    
+
     int err = lua_pcall(L, 0, 0, 0);
     if (err != LUA_OK) {
         snprintf(error_buf, buf_size, "%s error: %s", name, lua_tostring(L, -1));
         lua_pop(L, 1);
         return false;
     }
+    error_buf[0] = '\0';  // Success, clear any previous error
     return true;
 }
 
 bool pico_lua_call_init(pico_vm_t* vm) {
-    return call_function((lua_State*)vm->lua_state, "_init", 
+    return call_function((lua_State*)vm->lua_state, "_init",
                          vm->error_msg, sizeof(vm->error_msg));
 }
 
 bool pico_lua_call_update(pico_vm_t* vm) {
-    return call_function((lua_State*)vm->lua_state, "_update", 
+    return call_function((lua_State*)vm->lua_state, "_update",
                          vm->error_msg, sizeof(vm->error_msg));
 }
 
 bool pico_lua_call_update60(pico_vm_t* vm) {
-    return call_function((lua_State*)vm->lua_state, "_update60", 
+    return call_function((lua_State*)vm->lua_state, "_update60",
                          vm->error_msg, sizeof(vm->error_msg));
 }
 
 bool pico_lua_call_draw(pico_vm_t* vm) {
-    return call_function((lua_State*)vm->lua_state, "_draw", 
+    return call_function((lua_State*)vm->lua_state, "_draw",
                          vm->error_msg, sizeof(vm->error_msg));
 }
 
