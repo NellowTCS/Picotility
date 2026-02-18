@@ -3,10 +3,19 @@
 
 #include "pico_input.h"
 #include <string.h>
+#include <stdio.h>
+
+#define PICO_DEBUG 1
+#if PICO_DEBUG
+#define PICO_LOG(fmt, ...) printf("[PICO] " fmt "\n", ##__VA_ARGS__)
+#else
+#define PICO_LOG(fmt, ...) ((void)0)
+#endif
 
 void pico_input_init(pico_input_t* input, pico_ram_t* ram) {
     memset(input, 0, sizeof(pico_input_t));
     input->ram = ram;
+    PICO_LOG("input: init");
 }
 
 void pico_input_setup_touch(pico_input_t* input, 

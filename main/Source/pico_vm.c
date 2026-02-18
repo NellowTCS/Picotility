@@ -8,6 +8,14 @@
 
 #define LUA_CODE_BUFFER_SIZE (32 * 1024)  // 32KB max Lua code
 
+#define PICO_DEBUG 1
+
+#if PICO_DEBUG
+#define PICO_LOG(fmt, ...) printf("[PICO] " fmt "\n", ##__VA_ARGS__)
+#else
+#define PICO_LOG(fmt, ...) ((void)0)
+#endif
+
 bool pico_vm_init(pico_vm_t* vm) {
     memset(vm, 0, sizeof(pico_vm_t));
 
@@ -179,13 +187,17 @@ void pico_vm_resume(pico_vm_t* vm) {
 }
 
 void pico_vm_step(pico_vm_t* vm) {
-    if (vm->state != PICO_VM_RUNNING) return;
+    if (vm->state != PICO_VM_RUNNING) {
+        PICO_LOG("step: not running (state=%d)", vm->state);
+        return;
+    }
 
     // Call _update60() preferred over _update()
     if (vm->has_update60) {
         if (!pico_lua_call_update60(vm)) {
             // Only treat as error if the message is non-empty
             if (vm->error_msg[0] != '\0') {
+                PICO_LOG("step: update60 error: %s", vm->error_msg);
                 vm->state = PICO_VM_ERROR;
                 return;
             }
@@ -193,6 +205,7 @@ void pico_vm_step(pico_vm_t* vm) {
     } else if (vm->has_update) {
         if (!pico_lua_call_update(vm)) {
             if (vm->error_msg[0] != '\0') {
+                PICO_LOG("step: update error: %s", vm->error_msg);
                 vm->state = PICO_VM_ERROR;
                 return;
             }
@@ -203,6 +216,7 @@ void pico_vm_step(pico_vm_t* vm) {
     if (vm->has_draw) {
         if (!pico_lua_call_draw(vm)) {
             if (vm->error_msg[0] != '\0') {
+                PICO_LOG("step: draw error: %s", vm->error_msg);
                 vm->state = PICO_VM_ERROR;
                 return;
             }

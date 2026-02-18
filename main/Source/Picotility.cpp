@@ -10,6 +10,14 @@
 #include <sys/stat.h>
 #include <tt_lvgl_toolbar.h>
 
+#define PICO_DEBUG 1
+
+#if PICO_DEBUG
+#define PICO_LOG(fmt, ...) printf("[PICO] " fmt "\n", ##__VA_ARGS__)
+#else
+#define PICO_LOG(fmt, ...) ((void)0)
+#endif
+
 /* ── Global instance pointer for static callbacks ────────────────────── */
 static Picotility* g_instance = nullptr;
 
@@ -188,8 +196,14 @@ void Picotility::onCartSelectClicked(lv_event_t* e) {
 
 void Picotility::emuTimerCb(lv_timer_t* timer) {
     (void)timer;
-    if (!g_instance) return;
-    if (g_instance->state != AppState::Running) return;
+    if (!g_instance) {
+        PICO_LOG("timer: no instance");
+        return;
+    }
+    if (g_instance->state != AppState::Running) {
+        PICO_LOG("timer: not running (state=%d)", (int)g_instance->state);
+        return;
+    }
 
     auto* self = g_instance;
 
@@ -233,14 +247,21 @@ void Picotility::emuTimerCb(lv_timer_t* timer) {
 /* ── Key event handler ───────────────────────────────────────────────── */
 
 void Picotility::onKeyEvent(lv_event_t* e) {
-    if (!g_instance) return;
-    if (g_instance->state != AppState::Running) return;
+    if (!g_instance) {
+        PICO_LOG("key: no instance");
+        return;
+    }
+    if (g_instance->state != AppState::Running) {
+        PICO_LOG("key: not running (state=%d)", (int)g_instance->state);
+        return;
+    }
 
     auto* self = g_instance;
     lv_event_code_t code = lv_event_get_code(e);
 
     if (code == LV_EVENT_KEY) {
         uint32_t key = lv_event_get_key(e);
+        PICO_LOG("key: press key=%lu", (unsigned long)key);
 
         /* Save previous state, apply key, find which button changed */
         uint8_t prev = self->vm.input.btn_state[PICO_PLAYER_0];
@@ -269,9 +290,11 @@ void Picotility::onKeyEvent(lv_event_t* e) {
 /* ── Load and start a cart ───────────────────────────────────────────── */
 
 void Picotility::startCartFromPath(const char* path) {
+    PICO_LOG("startCart: loading %s", path);
     if (!pico_vm_load_cart(&vm, path)) {
+        const char* err = pico_vm_get_error(&vm);
+        PICO_LOG("startCart: load failed: %s", err ? err : "unknown");
         if (statusLabel) {
-            const char* err = pico_vm_get_error(&vm);
             if (err && err[0]) {
                 lv_label_set_text_fmt(statusLabel, "Error: %s", err);
             } else {
@@ -284,6 +307,7 @@ void Picotility::startCartFromPath(const char* path) {
     /* Start the VM */
     pico_vm_run(&vm);
     state = AppState::Running;
+    PICO_LOG("startCart: running");
 
     /* Hide cart list, show canvas */
     if (cartList) lv_obj_add_flag(cartList, LV_OBJ_FLAG_HIDDEN);

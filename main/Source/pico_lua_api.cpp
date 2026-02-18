@@ -12,6 +12,14 @@ extern "C" {
 #include <lualib.h>
 #include <lauxlib.h>
 #include <cstring>
+#include <cstdio>
+
+#define PICO_DEBUG 1
+#if PICO_DEBUG
+#define PICO_LOG(fmt, ...) printf("[PICO] " fmt "\n", ##__VA_ARGS__)
+#else
+#define PICO_LOG(fmt, ...) ((void)0)
+#endif
 
 // Global VM pointer for API functions
 static pico_vm_t* g_vm = nullptr;
@@ -836,11 +844,13 @@ static void register_api(lua_State* L) {
 extern "C" {
 
 bool pico_lua_init(pico_vm_t* vm) {
+    PICO_LOG("lua: init");
     g_vm = vm;
     cartdata_enabled = false;
 
     lua_State* L = luaL_newstate();
     if (!L) {
+        PICO_LOG("lua: failed to create state");
         snprintf(vm->error_msg, sizeof(vm->error_msg), "Failed to create Lua state");
         return false;
     }
@@ -858,10 +868,12 @@ bool pico_lua_init(pico_vm_t* vm) {
     rng_state = (uint32_t)(uintptr_t)L ^ 0xDEADBEEF;
 
     vm->lua_state = L;
+    PICO_LOG("lua: init done");
     return true;
 }
 
 void pico_lua_shutdown(pico_vm_t* vm) {
+    PICO_LOG("lua: shutdown");
     if (vm->lua_state) {
         lua_close((lua_State*)vm->lua_state);
         vm->lua_state = nullptr;
@@ -870,25 +882,32 @@ void pico_lua_shutdown(pico_vm_t* vm) {
 }
 
 bool pico_lua_load(pico_vm_t* vm, const char* code, size_t len) {
+    PICO_LOG("lua: load %zu bytes", len);
     lua_State* L = (lua_State*)vm->lua_state;
-    if (!L) return false;
+    if (!L) {
+        PICO_LOG("lua: no state");
+        return false;
+    }
 
     int err = luaL_loadbuffer(L, code, len, "cart");
     if (err != LUA_OK) {
-        snprintf(vm->error_msg, sizeof(vm->error_msg), "Load error: %s",
-                 lua_tostring(L, -1));
+        const char* msg = lua_tostring(L, -1);
+        PICO_LOG("lua: load error: %s", msg);
+        snprintf(vm->error_msg, sizeof(vm->error_msg), "Load error: %s", msg);
         lua_pop(L, 1);
         return false;
     }
 
     err = lua_pcall(L, 0, 0, 0);
     if (err != LUA_OK) {
-        snprintf(vm->error_msg, sizeof(vm->error_msg), "Run error: %s",
-                 lua_tostring(L, -1));
+        const char* msg = lua_tostring(L, -1);
+        PICO_LOG("lua: run error: %s", msg);
+        snprintf(vm->error_msg, sizeof(vm->error_msg), "Run error: %s", msg);
         lua_pop(L, 1);
         return false;
     }
 
+    PICO_LOG("lua: load success");
     return true;
 }
 

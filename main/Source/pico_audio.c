@@ -3,6 +3,14 @@
 
 #include "pico_audio.h"
 #include <string.h>
+#include <stdio.h>
+
+#define PICO_DEBUG 1
+#if PICO_DEBUG
+#define PICO_LOG(fmt, ...) printf("[PICO] " fmt "\n", ##__VA_ARGS__)
+#else
+#define PICO_LOG(fmt, ...) ((void)0)
+#endif
 
 // PICO-8 note frequencies (C-0 to C-5, 64 notes) as fix32
 static const fix32_t NOTE_FREQ[] = {
