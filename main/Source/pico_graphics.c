@@ -662,6 +662,8 @@ void pico_pal_reset(pico_graphics_t* gfx) {
         ram->ds.draw_pal[i] = i;
         ram->ds.screen_pal[i] = i;
     }
+    // PICO-8 default: color 0 is transparent
+    ram->ds.draw_pal[0] |= 0x10;
 }
 
 void pico_palt(pico_graphics_t* gfx, uint8_t col, bool transparent) {
