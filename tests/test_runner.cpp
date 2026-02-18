@@ -77,6 +77,19 @@ static CartTest all_carts[] = {
     {"tilde_bxor_test", "carts/tilde_bxor_test.p8", false},
     {"tline_test", "carts/tline_test.p8", false},
     {"tonumtest2", "carts/tonumtest2.p8", false},
+    
+    // PNG carts from schoblaska/pico-8
+    {"37402", "carts/37402.p8.png", false},
+    {"hund3d", "carts/hund3d.p8.png", false},
+    {"kaido", "carts/kaido.p8.png", false},
+    {"lander", "carts/lander.p8.png", false},
+    {"parallax", "carts/parallax.p8.png", false},
+    {"raycaster", "carts/raycaster.p8.png", false},
+    {"sokotiles_wip1", "carts/sokotiles_wip1.p8.png", false},
+    {"sokotiles_wip2", "carts/sokotiles_wip2.p8.png", false},
+    {"tvstatic", "carts/tvstatic.p8.png", false},
+    {"celeste", "carts/Celeste.p8.png", false},
+    {"racer", "carts/racer.p8", false},
 };
 
 static int passed = 0;

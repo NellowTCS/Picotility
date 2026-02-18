@@ -285,6 +285,17 @@ static int l_print(lua_State* L) {
     return 0;
 }
 
+static int l_cursor(lua_State* L) {
+    // cursor(x, [y]) — set cursor position for print
+    if (lua_gettop(L) >= 2) {
+        RAM->ds.text_x = luaL_checkinteger(L, 1);
+        RAM->ds.text_y = luaL_checkinteger(L, 2);
+    } else {
+        RAM->ds.text_x = luaL_checkinteger(L, 1);
+    }
+    return 0;
+}
+
 // Input API
 
 static int l_btn(lua_State* L) {
@@ -771,6 +782,7 @@ static const luaL_Reg pico_api[] = {
     {"palt", l_palt},
     {"fillp", l_fillp},
     {"print", l_print},
+    {"cursor", l_cursor},
     
     // Input
     {"btn", l_btn},

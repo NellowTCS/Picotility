@@ -53,3 +53,22 @@ target_compile_options(test_runner PRIVATE
     -Wno-write-strings
     -DLUA_USE_LONGJMP
 )
+
+# PNG comparison test
+add_executable(test_png
+    test_png.cpp
+    ${PICO_SOURCES}
+    ${Z8LUA_CPP_SOURCES}
+)
+
+target_include_directories(test_png PRIVATE
+    ${CMAKE_SOURCE_DIR}/../main/Include
+    ${CMAKE_SOURCE_DIR}/../main/z8lua
+)
+
+set_source_files_properties(${Z8LUA_SOURCES} PROPERTIES LANGUAGE CXX)
+
+target_compile_options(test_png PRIVATE
+    -Wno-write-strings
+    -DLUA_USE_LONGJMP
+)
