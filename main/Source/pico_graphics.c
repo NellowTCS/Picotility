@@ -24,7 +24,7 @@ static inline bool in_clip(pico_ram_t* ram, int x, int y) {
 
 // Check if color is transparent (bit 4 of draw palette)
 static inline bool is_transparent(pico_ram_t* ram, uint8_t c) {
-    return (ram->ds.draw_pal[c & 0x0F] & 0x10) != 0;
+    return (ram->ds.draw_pal[c & 0x0F] >> 4) != 0;
 }
 
 // Get draw-palette mapped color
@@ -176,9 +176,13 @@ void pico_cls(pico_graphics_t* gfx, uint8_t color) {
     color &= 0x0F;
     memset(ram->screen, color | (color << 4), PICO_FRAMEBUFFER_SIZE);
 
-    // cls() only resets the text cursor, not clip or camera.
     ram->ds.text_x = 0;
     ram->ds.text_y = 0;
+
+    ram->ds.clip_xb = 0;
+    ram->ds.clip_yb = 0;
+    ram->ds.clip_xe = 128;
+    ram->ds.clip_ye = 128;
 
     gfx->dirty_top = 0;
     gfx->dirty_bottom = 127;
