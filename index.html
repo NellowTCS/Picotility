@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Picotility</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <h1>Picotility</h1>
+        <p class="subtitle">PICO-8 emulator for the web</p>
+
+        <div id="screen-container">
+            <canvas id="screen" width="128" height="128"></canvas>
+            <div id="error-overlay" class="hidden">
+                <pre id="error-text"></pre>
+            </div>
+        </div>
+
+        <div id="controls-bar">
+            <span id="fps-display">--</span>
+            <span id="frame-display">0</span>
+        </div>
+
+        <div id="actions">
+            <label id="file-btn" class="btn">
+                Load .p8 / .p8.png
+                <input type="file" id="file-input" accept=".p8,.p8.png,.png" hidden>
+            </label>
+            <div id="drop-zone" aria-label="Drop a cart file here">
+                or drag &amp; drop a cart here
+            </div>
+        </div>
+
+        <div id="examples" class="hidden">
+            <h2>Example Carts</h2>
+            <ul id="cart-list"></ul>
+        </div>
+
+        <div id="touch-controls">
+            <div id="dpad">
+                <button class="dpad-btn" data-btn="1" aria-label="Left">&#9664;</button>
+                <button class="dpad-btn" data-btn="4" aria-label="Up">&#9650;</button>
+                <button class="dpad-btn" data-btn="2" aria-label="Right">&#9654;</button>
+                <button class="dpad-btn" data-btn="8" aria-label="Down">&#9660;</button>
+            </div>
+            <div id="action-buttons">
+                <button class="action-btn" data-btn="16" aria-label="O">O</button>
+                <button class="action-btn" data-btn="32" aria-label="X">X</button>
+            </div>
+        </div>
+
+        <div id="keyboard-hint">
+            Arrow keys: d-pad &middot; Z/Space: O &middot; X/Shift: X
+        </div>
+    </div>
+
+    <script src="build/picotility.js"></script>
+    <script src="pico.js"></script>
+</body>
+</html>
