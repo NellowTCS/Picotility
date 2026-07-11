@@ -641,7 +641,7 @@ void pico_color(pico_graphics_t* gfx, uint8_t col) {
 void pico_pal(pico_graphics_t* gfx, uint8_t c0, uint8_t c1, uint8_t p) {
     pico_ram_t* ram = gfx->ram;
     if (p == 0) {
-        ram->ds.draw_pal[c0 & 0x0F] = c1 & 0x0F;
+        ram->ds.draw_pal[c0 & 0x0F] = (ram->ds.draw_pal[c0 & 0x0F] & 0x10) | (c1 & 0x0F);
     } else {
         ram->ds.screen_pal[c0 & 0x0F] = c1 & 0x8F;
     }
