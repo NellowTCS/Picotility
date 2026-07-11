@@ -19,12 +19,13 @@
 // Player indices
 #define PICO_PLAYER_0   0
 #define PICO_PLAYER_1   1
+#define PICO_MAX_PLAYERS 8
 
 // Input Context
 typedef struct {
     pico_ram_t* ram;
-    uint8_t btn_state[2];       // Current state per player
-    uint8_t btn_prev[2];        // Previous frame state
+    uint8_t btn_state[8];       // Current state per player (up to 8)
+    uint8_t btn_prev[8];        // Previous frame state
     bool touch_active;
     int16_t touch_x;
     int16_t touch_y;

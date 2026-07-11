@@ -46,6 +46,10 @@ void pico_ram_reset(pico_ram_t* ram) {
     ram->hw.map_width = 128;
     ram->hw.btnp_delay = 15;
     ram->hw.btnp_interval = 4;
+
+    // PRNG: PICO-8 XCU state (2-state at 0x5F44-0x5F4B)
+    ram->hw.rng[0] = 0xDEADBEEF;  // lo
+    ram->hw.rng[1] = 0x01234567;  // hi
 }
 
 uint8_t pico_peek(pico_ram_t* ram, uint16_t addr) {

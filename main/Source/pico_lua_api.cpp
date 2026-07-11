@@ -221,6 +221,19 @@ static int l_sset(lua_State* L) {
     return 0;
 }
 
+static int l_tline(lua_State* L) {
+    int16_t x0 = lua_tointeger(L, 1);
+    int16_t y0 = lua_tointeger(L, 2);
+    int16_t x1 = lua_tointeger(L, 3);
+    int16_t y1 = lua_tointeger(L, 4);
+    fix32_t mx = (fix32_t)((double)luaL_optnumber(L, 5, 0.0) * FIX32_ONE);
+    fix32_t my = (fix32_t)((double)luaL_optnumber(L, 6, 0.0) * FIX32_ONE);
+    fix32_t mdx = (fix32_t)((double)luaL_optnumber(L, 7, 1.0) * FIX32_ONE);
+    fix32_t mdy = (fix32_t)((double)luaL_optnumber(L, 8, 1.0) * FIX32_ONE);
+    pico_tline(GFX, x0, y0, x1, y1, mx, my, mdx, mdy);
+    return 0;
+}
+
 static int l_camera(lua_State* L) {
     int16_t x = luaL_optinteger(L, 1, 0);
     int16_t y = luaL_optinteger(L, 2, 0);
@@ -260,9 +273,27 @@ static int l_pal(lua_State* L) {
 }
 
 static int l_palt(lua_State* L) {
-    uint8_t c = lua_tointeger(L, 1);
-    bool t = lua_gettop(L) >= 2 ? lua_toboolean(L, 2) : true;
-    pico_palt(GFX, c, t);
+    if (lua_gettop(L) == 0) {
+        // Reset all transparency to default (only color 0 transparent)
+        for (int i = 0; i < 16; i++) {
+            RAM->ds.draw_pal[i] &= ~0x10;
+        }
+        RAM->ds.draw_pal[0] |= 0x10;
+    } else if (lua_gettop(L) == 1) {
+        // palt(bitmask) - treat as transparency bitmask (bit 15 = color 0, ..., bit 0 = color 15)
+        uint16_t mask = (uint16_t)lua_tointeger(L, 1);
+        for (int i = 0; i < 16; i++) {
+            if (mask & (1 << (15 - i))) {
+                RAM->ds.draw_pal[i] |= 0x10;
+            } else {
+                RAM->ds.draw_pal[i] &= ~0x10;
+            }
+        }
+    } else {
+        uint8_t c = lua_tointeger(L, 1);
+        bool t = lua_toboolean(L, 2);
+        pico_palt(GFX, c, t);
+    }
     return 0;
 }
 
@@ -515,29 +546,68 @@ static int l_count(lua_State* L) {
 
 static int l_foreach(lua_State* L) {
     // foreach(t, f) — call f(v) for each element in t
+    // Snapshot values first so del()/add() during iteration are safe
     if (lua_isnil(L, 1)) {
-        return 0;  // Do nothing if table is nil
+        return 0;
     }
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_checktype(L, 2, LUA_TFUNCTION);
     int n = luaL_len(L, 1);
+    if (n == 0) return 0;
+
+    // Push all values onto stack as snapshot
     for (int i = 1; i <= n; i++) {
-        lua_pushvalue(L, 2);
         lua_rawgeti(L, 1, i);
+    }
+
+    // Iterate over snapshot (values at fixed stack positions)
+    int base = lua_gettop(L) - n + 1;
+    for (int i = 0; i < n; i++) {
+        lua_pushvalue(L, 2);
+        lua_pushvalue(L, base + i);
         lua_call(L, 1, 0);
     }
     return 0;
 }
 
-// all() iterator: returns next element each call
+// all() iterator: mutation-aware, handles del() during iteration
 static int all_iterator(lua_State* L) {
+    // upvalue 1: table, upvalue 2: index, upvalue 3: last returned value
     int i = lua_tointeger(L, lua_upvalueindex(2));
     int n = luaL_len(L, lua_upvalueindex(1));
-    if (i > n) return 0;
+
+    // If the value at current index matches what we last returned,
+    // it hasn't been deleted/shifted so advance past it
     lua_rawgeti(L, lua_upvalueindex(1), i);
-    lua_pushinteger(L, i + 1);
+    lua_pushvalue(L, -1);
+    lua_pushvalue(L, lua_upvalueindex(3));
+    if (lua_rawequal(L, -1, -2)) {
+        // Same value, advance
+        lua_pop(L, 2);
+        i++;
+    } else {
+        // Value changed (shifted by del): stay at this index
+        lua_pop(L, 2);
+    }
+
+    // Skip nil values and find next valid element
+    while (i <= n) {
+        lua_rawgeti(L, lua_upvalueindex(1), i);
+        if (!lua_isnil(L, -1)) {
+            // Found a value, update upvalues and return it
+            lua_pushinteger(L, i);
+            lua_replace(L, lua_upvalueindex(2));
+            lua_pushvalue(L, -1);
+            lua_replace(L, lua_upvalueindex(3));
+            return 1;
+        }
+        lua_pop(L, 1);
+        i++;
+    }
+    // Update index past end
+    lua_pushinteger(L, i);
     lua_replace(L, lua_upvalueindex(2));
-    return 1;
+    return 0;
 }
 
 static int l_all(lua_State* L) {
@@ -545,34 +615,58 @@ static int l_all(lua_State* L) {
     luaL_checktype(L, 1, LUA_TTABLE);
     lua_pushvalue(L, 1);       // upvalue 1: table
     lua_pushinteger(L, 1);     // upvalue 2: index
-    lua_pushcclosure(L, all_iterator, 2);
+    lua_pushnil(L);            // upvalue 3: last returned value
+    lua_pushcclosure(L, all_iterator, 3);
     return 1;
 }
 
 // PICO-8 Utility Functions
 
-static uint32_t rng_state = 1;
+// PRNG: PICO-8 XCU algorithm
+// State stored in RAM->hw.rng[0..1] (0x5F44-0x5F4B)
+// rng[0] = lo (big-endian uint32_t), rng[1] = hi (big-endian uint32_t)
+// Algorithm: hi=(hi<<16|hi>>16)+lo; lo+=hi; return hi
+static uint32_t pico8_prng_step(pico_ram_t* ram) {
+    uint32_t hi = ram->hw.rng[1];
+    uint32_t lo = ram->hw.rng[0];
+    hi = (hi << 16 | hi >> 16) + lo;
+    lo += hi;
+    ram->hw.rng[0] = lo;
+    ram->hw.rng[1] = hi;
+    return hi;
+}
+
+static void pico8_prng_seed(pico_ram_t* ram, uint32_t seed) {
+    uint32_t lo = seed ? (seed & 0x7FFFFFFF) : 0xDEADBEEF;
+    uint32_t hi = lo ^ 0xBEAD29BA;
+    ram->hw.rng[0] = lo;
+    ram->hw.rng[1] = hi;
+    // 32 warmup steps
+    for (int i = 0; i < 32; i++) {
+        pico8_prng_step(ram);
+    }
+}
 
 static int l_rnd(lua_State* L) {
     // rnd(x) — random number [0, x), or random element from table
     if (lua_istable(L, 1)) {
         int n = luaL_len(L, 1);
         if (n == 0) return 0;
-        rng_state = rng_state * 1103515245 + 12345;
-        int i = ((rng_state >> 16) % n) + 1;
+        uint32_t val = pico8_prng_step(RAM);
+        int i = (int)((val >> 16) % n) + 1;
         lua_rawgeti(L, 1, i);
         return 1;
     }
     double max_val = luaL_optnumber(L, 1, 1.0);
-    rng_state = rng_state * 1103515245 + 12345;
-    double r = (double)(rng_state >> 16) / 65536.0;
+    uint32_t val = pico8_prng_step(RAM);
+    double r = (double)(val >> 16) / 65536.0;
     lua_pushnumber(L, r * max_val);
     return 1;
 }
 
 static int l_srand(lua_State* L) {
-    rng_state = (uint32_t)lua_tointeger(L, 1);
-    if (rng_state == 0) rng_state = 1;
+    uint32_t seed = (uint32_t)lua_tointeger(L, 1);
+    pico8_prng_seed(RAM, seed);
     return 0;
 }
 
@@ -744,7 +838,7 @@ static int l_dset(lua_State* L) {
 // System API
 
 static int l_time(lua_State* L) {
-    lua_pushnumber(L, g_vm->frame_count / 30.0);
+    lua_pushnumber(L, (double)g_vm->frame_count / (double)g_vm->target_fps);
     return 1;
 }
 
@@ -785,6 +879,7 @@ static const luaL_Reg pico_api[] = {
     {"fset", l_fset},
     {"sget", l_sget},
     {"sset", l_sset},
+    {"tline", l_tline},
     {"camera", l_camera},
     {"clip", l_clip},
     {"color", l_color},
@@ -844,12 +939,12 @@ static const luaL_Reg pico_api[] = {
 static void register_api(lua_State* L) {
     lua_pushglobaltable(L);
     luaL_setfuncs(L, pico_api, 0);
-    
-    // Add unpack (table.unpack)
+    lua_pop(L, 1);  // pop _G
+
+    // Add unpack = table.unpack
     lua_getglobal(L, "table");
     lua_getfield(L, -1, "unpack");
     lua_setglobal(L, "unpack");
-    
     lua_pop(L, 1);
 }
 
@@ -877,9 +972,6 @@ bool pico_lua_init(pico_vm_t* vm) {
     
     // Register our API functions
     register_api(L);
-
-    // Seed RNG
-    rng_state = (uint32_t)(uintptr_t)L ^ 0xDEADBEEF;
 
     vm->lua_state = L;
     PICO_LOG("lua: init done");

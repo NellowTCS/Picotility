@@ -67,6 +67,10 @@ void pico_vm_reset(pico_vm_t* vm) {
     vm->has_update = false;
     vm->has_update60 = false;
     vm->has_draw = false;
+
+    // Recreate Lua state so globals from the previous cart don't pollute the new one
+    pico_lua_shutdown(vm);
+    pico_lua_init(vm);
 }
 
 bool pico_vm_load_cart(pico_vm_t* vm, const char* path) {

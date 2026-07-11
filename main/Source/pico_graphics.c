@@ -643,7 +643,7 @@ void pico_pal(pico_graphics_t* gfx, uint8_t c0, uint8_t c1, uint8_t p) {
     if (p == 0) {
         ram->ds.draw_pal[c0 & 0x0F] = (ram->ds.draw_pal[c0 & 0x0F] & 0x10) | (c1 & 0x0F);
     } else {
-        ram->ds.screen_pal[c0 & 0x0F] = c1 & 0x8F;
+        ram->ds.screen_pal[c0 & 0x0F] = c1 & 0xFF;
     }
 }
 
@@ -705,4 +705,68 @@ void pico_sset(pico_graphics_t* gfx, int16_t x, int16_t y, uint8_t col) {
     pico_ram_t* ram = gfx->ram;
     if (x < 0 || x >= 128 || y < 0 || y >= 128) return;
     pico_set_pixel(ram->sprites, x, y, col & 0x0F);
+}
+
+void pico_tline(pico_graphics_t* gfx, int16_t x0, int16_t y0, int16_t x1, int16_t y1,
+                fix32_t mx, fix32_t my, fix32_t mdx, fix32_t mdy) {
+    pico_ram_t* ram = gfx->ram;
+    int ix0 = x0, iy0 = y0, ix1 = x1, iy1 = y1;
+    apply_camera(ram, &ix0, &iy0);
+    apply_camera(ram, &ix1, &iy1);
+    int16_t sx0 = (int16_t)ix0, sy0 = (int16_t)iy0;
+    int16_t sx1 = (int16_t)ix1, sy1 = (int16_t)iy1;
+
+    if (sx0 > sx1) { int16_t t = sx0; sx0 = sx1; sx1 = t; }
+    if (sy0 > sy1) { int16_t t = sy0; sy0 = sy1; sy1 = t; }
+
+    // Clip to screen
+    int16_t cx0 = CLAMP(sx0, ram->ds.clip_xb, ram->ds.clip_xe - 1);
+    int16_t cy0 = CLAMP(sy0, ram->ds.clip_yb, ram->ds.clip_ye - 1);
+    int16_t cx1 = CLAMP(sx1, ram->ds.clip_xb, ram->ds.clip_xe - 1);
+    int16_t cy1 = CLAMP(sy1, ram->ds.clip_yb, ram->ds.clip_ye - 1);
+
+    for (int16_t sy = cy0; sy <= cy1; sy++) {
+        // Map source position for this scanline in 16.16 fixed-point
+        fix32_t map_x = mx + (fix32_t)(sy - y0) * mdx;
+        fix32_t map_y = my + (fix32_t)(sy - y0) * mdy;
+
+        for (int16_t sx = cx0; sx <= cx1; sx++) {
+            // Get integer map pixel coordinates
+            int16_t src_map_x = (int16_t)(map_x >> FIX32_SHIFT);
+            int16_t src_map_y = (int16_t)(map_y >> FIX32_SHIFT);
+
+            // Compute tile index and sub-tile pixel
+            int16_t tile_x = (src_map_x >> 3) & 0x7F;  // tile column (0-127)
+            int16_t tile_y = (src_map_y >> 3) & 0x3F;   // tile row (0-63)
+            int16_t pix_x = src_map_x & 7;               // sub-tile X (0-7)
+            int16_t pix_y = src_map_y & 7;               // sub-tile Y (0-7)
+
+            // Get tile index from map memory
+            uint8_t tile = pico_mget(gfx, tile_x, tile_y);
+            if (tile == 0) {
+                map_x += mdx;
+                map_y += mdy;
+                continue;
+            }
+
+            // Get pixel from sprite sheet
+            int16_t spr_x = (tile % 16) * 8 + pix_x;
+            int16_t spr_y = (tile / 16) * 8 + pix_y;
+            uint8_t col = pico_get_pixel(ram->sprites, spr_x, spr_y);
+
+            // Apply draw palette and draw if not transparent
+            if (!is_transparent(ram, col)) {
+                set_pixel_sprite(ram, sx, sy, col);
+            }
+
+            map_x += mdx;
+            map_y += mdy;
+        }
+    }
+
+    // Store last tline position (convert back to fixed-point for the draw state)
+    ram->ds.tline_x = (uint8_t)((mx + (fix32_t)(x1 - x0 + 1) * mdx) >> FIX32_SHIFT);
+    ram->ds.tline_y = (uint8_t)((my + (fix32_t)(y1 - y0 + 1) * mdy) >> FIX32_SHIFT);
+
+    gfx->needs_flip = true;
 }

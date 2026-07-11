@@ -112,6 +112,9 @@ function setupCanvas() {
     ctx.putImageData(imageData, 0, 0);
 }
 
+// Screen palette buffer (reused each frame to avoid allocation)
+const screenPal = new Uint8Array(16);
+
 function renderFrame() {
     const fbPtr = wasm.getFramebuffer();
     const top   = wasm.getDirtyTop();
@@ -119,15 +122,21 @@ function renderFrame() {
 
     const rgba = imageData.data;
 
-    // Convert 4bpp packed framebuffer to RGBA
+    // Read screen palette from RAM (at 0x5F10, framebuffer at 0x6000 -> offset -240)
+    const screenPalPtr = fbPtr - 240;
+    for (let i = 0; i < 16; i++) {
+        screenPal[i] = mem[screenPalPtr + i] & 0x0F;
+    }
+
+    // Convert 4bpp packed framebuffer to RGBA with screen palette remap
     // Screen is 128x128, 2 pixels per byte, row stride = 64 bytes
     for (let row = top; row <= bottom; row++) {
         const rowBase = fbPtr + row * 64;
         const pixRow  = row * 128 * 4;
         for (let col = 0; col < 64; col++) {
             const b = mem[rowBase + col];
-            const lo = b & 0x0f;
-            const hi = (b >> 4) & 0x0f;
+            const lo = screenPal[b & 0x0f];
+            const hi = screenPal[(b >> 4) & 0x0f];
 
             const i0 = pixRow + col * 8;
             const i1 = i0 + 4;
@@ -157,9 +166,24 @@ function mainLoop(timestamp) {
     if (timestamp - lastFrameTime < interval) return;
     lastFrameTime = timestamp;
 
-    if (wasm.getState() !== 1) return;  // 1 = RUNNING
+    if (wasm.getState() !== 1) {
+        // State 3 = ERROR
+        if (wasm.getState() === 3) {
+            const errPtr = wasm.getError();
+            const msg = errPtr ? mod.UTF8ToString(errPtr) : "Runtime error";
+            showError(msg);
+        }
+        return;
+    }
 
     wasm.step();
+
+    if (wasm.getState() === 3) {
+        const errPtr = wasm.getError();
+        const msg = errPtr ? mod.UTF8ToString(errPtr) : "Runtime error";
+        showError(msg);
+        return;
+    }
 
     if (wasm.needsFlip()) {
         renderFrame();

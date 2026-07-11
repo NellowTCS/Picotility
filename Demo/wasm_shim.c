@@ -86,17 +86,25 @@ void wasm_step(void) {
     if (vm.state != PICO_VM_RUNNING) return;
 
     if (vm.has_update60) {
-        pico_lua_call_update60(&vm);
+        if (!pico_lua_call_update60(&vm)) {
+            vm.state = PICO_VM_ERROR;
+            return;
+        }
     } else if (vm.has_update) {
-        pico_lua_call_update(&vm);
+        if (!pico_lua_call_update(&vm)) {
+            vm.state = PICO_VM_ERROR;
+            return;
+        }
     }
 
     if (vm.has_draw) {
-        pico_lua_call_draw(&vm);
+        if (!pico_lua_call_draw(&vm)) {
+            vm.state = PICO_VM_ERROR;
+            return;
+        }
     }
 
     pico_audio_update(&vm.audio);
-    // No pico_flip here as JS reads framebuffer then calls wasm_flip()
     vm.frame_count++;
 }
 

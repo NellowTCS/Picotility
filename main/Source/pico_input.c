@@ -82,11 +82,12 @@ void pico_input_setup_touch(pico_input_t* input,
 }
 
 void pico_input_update(pico_input_t* input) {
-    input->btn_prev[0] = input->btn_state[0];
-    input->btn_prev[1] = input->btn_state[1];
+    for (int i = 0; i < PICO_MAX_PLAYERS; i++) {
+        input->btn_prev[i] = input->btn_state[i];
+    }
     
     // Sync with hardware state
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < PICO_MAX_PLAYERS; i++) {
         input->ram->hw.btn[i] = input->btn_state[i];
     }
 }
@@ -115,7 +116,7 @@ void pico_input_touch(pico_input_t* input, bool pressed,
 
 void pico_input_set_button(pico_input_t* input, uint8_t player,
                            uint8_t button, bool pressed) {
-    if (player > 1) return;
+    if (player >= PICO_MAX_PLAYERS) return;
     
     if (pressed) {
         input->btn_state[player] |= button;
@@ -125,12 +126,12 @@ void pico_input_set_button(pico_input_t* input, uint8_t player,
 }
 
 bool pico_btn(pico_input_t* input, uint8_t button, uint8_t player) {
-    if (player > 1) return false;
+    if (player >= PICO_MAX_PLAYERS) return false;
     return (input->btn_state[player] & button) != 0;
 }
 
 bool pico_btnp(pico_input_t* input, uint8_t button, uint8_t player) {
-    if (player > 1) return false;
+    if (player >= PICO_MAX_PLAYERS) return false;
     return (input->btn_state[player] & button) != 0 &&
            (input->btn_prev[player] & button) == 0;
 }

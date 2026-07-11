@@ -64,4 +64,8 @@ void pico_fset(pico_graphics_t* gfx, int16_t n, uint8_t f, bool val);
 uint8_t pico_sget(pico_graphics_t* gfx, int16_t x, int16_t y);
 void pico_sset(pico_graphics_t* gfx, int16_t x, int16_t y, uint8_t color);
 
+// Tile Line Drawing
+void pico_tline(pico_graphics_t* gfx, int16_t x0, int16_t y0, int16_t x1, int16_t y1,
+                fix32_t mx, fix32_t my, fix32_t mdx, fix32_t mdy);
+
 #endif // PICO_GRAPHICS_H
