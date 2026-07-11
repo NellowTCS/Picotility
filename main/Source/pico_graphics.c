@@ -191,6 +191,13 @@ void pico_flip(pico_graphics_t* gfx) {
     gfx->dirty_bottom = 0;
 }
 
+static void expand_dirty(pico_graphics_t* gfx, int16_t y0, int16_t y1) {
+    if (y0 < 0) y0 = 0;
+    if (y1 > 127) y1 = 127;
+    if (y0 < gfx->dirty_top) gfx->dirty_top = y0;
+    if (y1 > gfx->dirty_bottom) gfx->dirty_bottom = y1;
+}
+
 void pico_pset(pico_graphics_t* gfx, int16_t x, int16_t y, uint8_t col) {
     pico_ram_t* ram = gfx->ram;
     pico_color(gfx, col);
@@ -230,6 +237,10 @@ void pico_line(pico_graphics_t* gfx, int16_t x0, int16_t y0,
     apply_camera(ram, &ix1, &iy1);
     
     pico_color(gfx, col);
+    
+    int line_min_y = iy0 < iy1 ? iy0 : iy1;
+    int line_max_y = iy0 > iy1 ? iy0 : iy1;
+    expand_dirty(gfx, line_min_y, line_max_y);
     
     // Vertical line optimization
     if (ix0 == ix1) {
@@ -281,6 +292,8 @@ void pico_rectfill(pico_graphics_t* gfx, int16_t x0, int16_t y0,
     
     pico_color(gfx, col);
     
+    expand_dirty(gfx, iy0, iy1);
+    
     for (int y = iy0; y <= iy1; y++) {
         h_line(ram, ix0, ix1, y);
     }
@@ -295,6 +308,8 @@ void pico_circ(pico_graphics_t* gfx, int16_t ox, int16_t oy,
     
     int ix = ox, iy = oy;
     apply_camera(ram, &ix, &iy);
+    
+    expand_dirty(gfx, iy - r, iy + r);
     
     int x = r;
     int y = 0;
@@ -329,6 +344,8 @@ void pico_circfill(pico_graphics_t* gfx, int16_t ox, int16_t oy,
     
     int ix = ox, iy = oy;
     apply_camera(ram, &ix, &iy);
+    
+    expand_dirty(gfx, iy - r, iy + r);
     
     if (r == 0) {
         safe_set_pixel_pen(ram, ix, iy);
@@ -365,6 +382,8 @@ void pico_oval(pico_graphics_t* gfx, int16_t x0, int16_t y0,
     int ix0 = x0, iy0 = y0, ix1 = x1;
     apply_camera(ram, &ix0, &iy0);
     ix1 = ix0 + a;
+    
+    expand_dirty(gfx, y0 - ram->ds.camera_y, y1 - ram->ds.camera_y);
     
     iy0 += (b + 1) / 2;
     int iy1 = iy0 - b1;
@@ -405,6 +424,8 @@ void pico_ovalfill(pico_graphics_t* gfx, int16_t x0, int16_t y0,
     int ix0 = x0, iy0 = y0, ix1 = x1;
     apply_camera(ram, &ix0, &iy0);
     ix1 = ix0 + a;
+    
+    expand_dirty(gfx, y0 - ram->ds.camera_y, y1 - ram->ds.camera_y);
     
     iy0 += (b + 1) / 2;
     int iy1 = iy0 - b1;
@@ -485,6 +506,8 @@ void pico_sspr(pico_graphics_t* gfx,
     }
     
     if (dw <= 0 || dh <= 0) return;
+    
+    expand_dirty(gfx, idy, idy + dh - 1);
     
     // Draw
     for (int py = 0; py < dh; py++) {
@@ -724,6 +747,8 @@ void pico_tline(pico_graphics_t* gfx, int16_t x0, int16_t y0, int16_t x1, int16_
     int16_t cy0 = CLAMP(sy0, ram->ds.clip_yb, ram->ds.clip_ye - 1);
     int16_t cx1 = CLAMP(sx1, ram->ds.clip_xb, ram->ds.clip_xe - 1);
     int16_t cy1 = CLAMP(sy1, ram->ds.clip_yb, ram->ds.clip_ye - 1);
+
+    expand_dirty(gfx, cy0, cy1);
 
     for (int16_t sy = cy0; sy <= cy1; sy++) {
         // Map source position for this scanline in 16.16 fixed-point

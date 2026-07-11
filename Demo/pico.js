@@ -117,8 +117,6 @@ const screenPal = new Uint8Array(16);
 
 function renderFrame() {
     const fbPtr = wasm.getFramebuffer();
-    const top   = wasm.getDirtyTop();
-    const bottom = wasm.getDirtyBottom();
 
     const rgba = imageData.data;
 
@@ -129,8 +127,9 @@ function renderFrame() {
     }
 
     // Convert 4bpp packed framebuffer to RGBA with screen palette remap
-    // Screen is 128x128, 2 pixels per byte, row stride = 64 bytes
-    for (let row = top; row <= bottom; row++) {
+    // Always render full 128x128 screen, dirty region tracking is unreliable
+    // with camera offsets (post-camera coords can be negative or >127)
+    for (let row = 0; row < 128; row++) {
         const rowBase = fbPtr + row * 64;
         const pixRow  = row * 128 * 4;
         for (let col = 0; col < 64; col++) {
