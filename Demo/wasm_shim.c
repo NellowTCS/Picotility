@@ -85,27 +85,7 @@ void wasm_step(void) {
 
     if (vm.state != PICO_VM_RUNNING) return;
 
-    if (vm.has_update60) {
-        if (!pico_lua_call_update60(&vm)) {
-            vm.state = PICO_VM_ERROR;
-            return;
-        }
-    } else if (vm.has_update) {
-        if (!pico_lua_call_update(&vm)) {
-            vm.state = PICO_VM_ERROR;
-            return;
-        }
-    }
-
-    if (vm.has_draw) {
-        if (!pico_lua_call_draw(&vm)) {
-            vm.state = PICO_VM_ERROR;
-            return;
-        }
-    }
-
-    pico_audio_update(&vm.audio);
-    vm.frame_count++;
+    pico_vm_step(&vm);
 }
 
 EMSCRIPTEN_KEEPALIVE

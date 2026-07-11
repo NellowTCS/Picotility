@@ -58,6 +58,7 @@ private:
     static void onCartSelectClicked(lv_event_t* e);
     static void emuTimerCb(lv_timer_t* timer);
     static void onKeyEvent(lv_event_t* e);
+    static void onTouchEvent(lv_event_t* e);
     static void onCartSelected(lv_event_t* e);
 
 public:

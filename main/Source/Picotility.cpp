@@ -146,13 +146,14 @@ void Picotility::renderDisplay(bool forceFull) {
     }
 
     /* Delta render: only update changed pixels */
+    const uint8_t* pal = ram->ds.screen_pal;
     for (int i = 0; i < PICO_FRAMEBUFFER_SIZE; i++) {
         if (fb[i] != prev_framebuffer[i] || forceFull) {
             prev_framebuffer[i] = fb[i];
             /* Each byte holds 2 pixels (4bpp) */
             int px = i * 2;
-            int lo = fb[i] & 0x0F;
-            int hi = (fb[i] >> 4) & 0x0F;
+            int lo = pal[fb[i] & 0x0F];
+            int hi = pal[(fb[i] >> 4) & 0x0F];
             buf[px] = pico_palette_565[lo];
             buf[px + 1] = pico_palette_565[hi];
         }
@@ -285,6 +286,29 @@ void Picotility::onKeyEvent(lv_event_t* e) {
             }
         }
     }
+}
+
+/* Touch event handler */
+
+void Picotility::onTouchEvent(lv_event_t* e) {
+    if (!g_instance) return;
+    if (g_instance->state != AppState::Running) return;
+
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_indev_t* indev = lv_indev_get_act();
+    if (!indev) return;
+
+    lv_point_t point;
+    lv_indev_get_point(indev, &point);
+
+    /* Convert screen coordinates to canvas-local coordinates */
+    lv_area_t canvas_area;
+    lv_obj_get_coords(g_instance->canvas, &canvas_area);
+    int16_t cx = point.x - canvas_area.x1;
+    int16_t cy = point.y - canvas_area.y1;
+
+    bool pressed = (code == LV_EVENT_PRESSED || code == LV_EVENT_PRESSING);
+    pico_input_touch(&g_instance->vm.input, pressed, cx, cy);
 }
 
 /* ── Load and start a cart ───────────────────────────────────────────── */
@@ -471,6 +495,9 @@ void Picotility::onShow(AppHandle app, lv_obj_t* parent) {
     if (grp) lv_group_add_obj(grp, canvas);
     lv_obj_add_event_cb(canvas, onKeyEvent, LV_EVENT_KEY, nullptr);
     lv_obj_add_event_cb(canvas, onKeyEvent, LV_EVENT_RELEASED, nullptr);
+    lv_obj_add_event_cb(canvas, onTouchEvent, LV_EVENT_PRESSED, nullptr);
+    lv_obj_add_event_cb(canvas, onTouchEvent, LV_EVENT_RELEASED, nullptr);
+    lv_obj_add_event_cb(canvas, onTouchEvent, LV_EVENT_PRESSING, nullptr);
 
     /* Emulation timer (starts paused — only runs when Running) */
     emuTimer = lv_timer_create(emuTimerCb, 1000 / PICO_FPS_DEFAULT, nullptr);

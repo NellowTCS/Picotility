@@ -27,6 +27,10 @@ const KEY_MAP = {
     ArrowRight: BTN.RIGHT,
     ArrowUp:    BTN.UP,
     ArrowDown:  BTN.DOWN,
+    KeyA:       BTN.LEFT,
+    KeyD:       BTN.RIGHT,
+    KeyW:       BTN.UP,
+    KeyS:       BTN.DOWN,
     KeyZ:       BTN.O,
     Space:      BTN.O,
     KeyX:       BTN.X,
@@ -69,10 +73,6 @@ async function init() {
     wasm.stop            = wrap("wasm_stop",           "",       []);
     wasm.setButton       = wrap("wasm_set_button",     "",       ["number","number"]);
     wasm.getFramebuffer  = wrap("wasm_get_framebuffer","number", []);
-    wasm.getDirtyTop     = wrap("wasm_get_dirty_top",  "number", []);
-    wasm.getDirtyBottom  = wrap("wasm_get_dirty_bottom","number",[]);
-    wasm.needsFlip       = wrap("wasm_needs_flip",     "number", []);
-    wasm.flip            = wrap("wasm_flip",           "",       []);
     wasm.audioFill       = wrap("wasm_audio_fill",     "number", ["number","number"]);
     wasm.getError        = wrap("wasm_get_error",      "number", []);
     wasm.getFps          = wrap("wasm_get_fps",        "number", []);
@@ -151,7 +151,6 @@ function renderFrame() {
     }
 
     ctx.putImageData(imageData, 0, 0);
-    wasm.flip();
 }
 
 // Main loop
@@ -184,9 +183,7 @@ function mainLoop(timestamp) {
         return;
     }
 
-    if (wasm.needsFlip()) {
-        renderFrame();
-    }
+    renderFrame();
 
     const $fps = $fpsDisplay();
     const $frame = $frameDisplay();

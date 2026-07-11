@@ -1,0 +1,43 @@
+name: Deploy Demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Demo/**'
+      - 'main/**'
+      - '.github/workflows/deploy-demo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Build WASM demo
+        run: |
+          emcmake cmake -B build -S Demo
+          cmake --build build
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp Demo/index.html Demo/pico.js Demo/style.css _site/
+          cp build/picotility.js build/picotility.wasm _site/
+          cp -r Demo/carts _site/
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: _site
