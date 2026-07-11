@@ -31,9 +31,9 @@ jobs:
 
       - name: Assemble site
         run: |
-          mkdir -p _site
+          mkdir -p _site/build
           cp Demo/index.html Demo/pico.js Demo/style.css _site/
-          cp build/picotility.js build/picotility.wasm _site/
+          cp build/picotility.js build/picotility.wasm _site/build/
           cp -r Demo/carts _site/
 
       - name: Deploy to gh-pages
