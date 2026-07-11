@@ -1,0 +1,222 @@
+:root {
+    --bg: #1a1a2e;
+    --fg: #e0e0e0;
+    --accent: #29adff;
+    --surface: #16213e;
+    --error: #ff004d;
+    --radius: 6px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Courier New", monospace;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    max-width: 520px;
+    width: 100%;
+}
+
+h1 {
+    font-size: 1.6rem;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+}
+
+.subtitle {
+    font-size: 0.75rem;
+    opacity: 0.5;
+    margin-top: -8px;
+}
+
+#screen-container {
+    position: relative;
+    width: 384px;
+    height: 384px;
+    background: #000;
+    border: 3px solid #333;
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+#screen {
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    display: block;
+}
+
+#error-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+#error-overlay.hidden { display: none; }
+
+#error-text {
+    color: var(--error);
+    font-size: 0.7rem;
+    text-align: center;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+#controls-bar {
+    display: flex;
+    gap: 16px;
+    font-size: 0.7rem;
+    opacity: 0.4;
+}
+
+#actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.btn {
+    display: inline-block;
+    padding: 8px 20px;
+    background: var(--surface);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn:hover { background: var(--accent); color: var(--bg); }
+
+#drop-zone {
+    font-size: 0.7rem;
+    opacity: 0.4;
+    padding: 8px 16px;
+    border: 1px dashed #444;
+    border-radius: var(--radius);
+    width: 100%;
+    text-align: center;
+    transition: border-color 0.2s, opacity 0.2s;
+}
+
+#drop-zone.drag-over {
+    border-color: var(--accent);
+    opacity: 0.8;
+}
+
+#examples h2 {
+    font-size: 0.85rem;
+    color: var(--accent);
+    margin-bottom: 6px;
+}
+
+#examples.hidden { display: none; }
+
+#cart-list {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+}
+
+#cart-list li {
+    cursor: pointer;
+    padding: 4px 12px;
+    background: var(--surface);
+    border: 1px solid #333;
+    border-radius: var(--radius);
+    font-size: 0.7rem;
+    transition: border-color 0.15s;
+}
+
+#cart-list li:hover {
+    border-color: var(--accent);
+}
+
+/* Touch controls: hidden on desktop, shown on touch devices */
+#touch-controls {
+    display: none;
+    width: 100%;
+    justify-content: space-between;
+    padding: 0 20px;
+    margin-top: 8px;
+}
+
+#dpad {
+    display: grid;
+    grid-template-columns: 44px 44px 44px;
+    grid-template-rows: 44px 44px 44px;
+    gap: 2px;
+}
+
+.dpad-btn {
+    background: var(--surface);
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: var(--fg);
+    font-size: 1rem;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.dpad-btn:active { background: var(--accent); color: var(--bg); }
+
+.dpad-btn[data-btn="1"] { grid-column: 1; grid-row: 2; }
+.dpad-btn[data-btn="4"] { grid-column: 2; grid-row: 1; }
+.dpad-btn[data-btn="2"] { grid-column: 3; grid-row: 2; }
+.dpad-btn[data-btn="8"] { grid-column: 2; grid-row: 3; }
+
+#action-buttons {
+    display: flex;
+    gap: 10px;
+    align-self: flex-end;
+    padding-bottom: 10px;
+}
+
+.action-btn {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid #444;
+    color: var(--fg);
+    font-size: 1rem;
+    font-family: inherit;
+    font-weight: bold;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.action-btn:active { background: var(--error); color: #fff; border-color: var(--error); }
+
+#keyboard-hint {
+    font-size: 0.65rem;
+    opacity: 0.3;
+}
+
+@media (hover: none) and (pointer: coarse) {
+    #touch-controls { display: flex; }
+    #keyboard-hint { display: none; }
+}

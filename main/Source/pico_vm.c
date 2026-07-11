@@ -5,6 +5,7 @@
 #include "pico_lua_api.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define LUA_CODE_BUFFER_SIZE (32 * 1024)  // 32KB max Lua code
 
