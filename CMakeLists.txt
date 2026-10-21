@@ -1,11 +1,13 @@
+# tactility-cmakelists-version: 1
 cmake_minimum_required(VERSION 3.20)
 
-# Include ESP-IDF and Tactility SDK
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-set(TACTILITY_SDK_PATH $ENV{TACTILITY_SDK_PATH})
-include("${TACTILITY_SDK_PATH}/TactilitySDK.cmake")
-set(EXTRA_COMPONENT_DIRS ${TACTILITY_SDK_PATH})
+if (NOT DEFINED ENV{TACTILITY_SDK_PATH})
+    message(FATAL_ERROR "TACTILITY_SDK_PATH environment variable is not set")
+endif()
 
-# Project definition
-project(Picotility)
-tactility_project(Picotility)
+get_filename_component(TACTILITY_SDK_PATH "$ENV{TACTILITY_SDK_PATH}" ABSOLUTE)
+include("${TACTILITY_SDK_PATH}/TactilitySDK.cmake")
+
+tactility_project_pre(picotility)
+project(picotility)
+tactility_project_post(picotility)

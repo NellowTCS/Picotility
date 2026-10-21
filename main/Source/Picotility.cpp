@@ -3,12 +3,17 @@
 
 #include "Picotility.h"
 
+#include <app/event.h>
+#include <app/manager.h>
+#include <app/paths.h>
+#include <app/scheduler.h>
+#include <lvgl/widgets/toolbar.h>
+
 #include <dirent.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <sys/stat.h>
-#include <tt_lvgl_toolbar.h>
 
 #define PICO_DEBUG 1
 
@@ -103,6 +108,7 @@ static uint8_t prev_framebuffer[PICO_FRAMEBUFFER_SIZE];
 
 #define TACTILITY_DIR "/sdcard/tactility"
 #define CART_DIR TACTILITY_DIR "/picotility"
+#define APP_ID "me.nellowtcs.picotility"
 
 static char** cart_paths = nullptr;
 static int cart_count = 0;
@@ -138,28 +144,56 @@ static int ci_strcmp(const char* a, const char* b) {
 void Picotility::renderDisplay(bool forceFull) {
     pico_ram_t* ram = &vm.ram;
     uint8_t* fb = ram->screen;
-    uint16_t* buf = cbuf;
 
     /* Check if framebuffer changed at all (quick memcmp) */
     if (!forceFull && memcmp(fb, prev_framebuffer, PICO_FRAMEBUFFER_SIZE) == 0) {
         return;
     }
 
-    /* Delta render: only update changed pixels */
-    const uint8_t* pal = ram->ds.screen_pal;
-    for (int i = 0; i < PICO_FRAMEBUFFER_SIZE; i++) {
-        if (fb[i] != prev_framebuffer[i] || forceFull) {
-            prev_framebuffer[i] = fb[i];
-            /* Each byte holds 2 pixels (4bpp) */
-            int px = i * 2;
-            int lo = pal[fb[i] & 0x0F];
-            int hi = pal[(fb[i] >> 4) & 0x0F];
-            buf[px] = pico_palette_565[lo];
-            buf[px + 1] = pico_palette_565[hi];
-        }
+    if (!display) return;
+
+    if (displayRow == nullptr || displayRowWidth != renderWidth ||
+        sourceXMap == nullptr || sourceYMap == nullptr) return;
+
+    if ((vm.frame_count % 60) == 0) {
+        PICO_LOG("render: frame=%lu size=%dx%d offset=%d,%d full=%d",
+                 (unsigned long)vm.frame_count, renderWidth, renderHeight,
+                 displayOffsetX, displayOffsetY, forceFull ? 1 : 0);
     }
 
-    lv_obj_invalidate(canvas);
+    /* Render in small bands. Four rows reduce native display calls by 4x
+       while keeping the native buffer far below a full framebuffer. */
+    const uint8_t* pal = ram->ds.screen_pal;
+    bool dirtyBands[MAX_DISPLAY_BANDS] = {};
+    for (int y = 0; y < CANVAS_H; y++) {
+        const int band = y * renderHeight / CANVAS_H / DISPLAY_BUFFER_ROWS;
+        for (int x = 0; x < CANVAS_W / 2; x++) {
+            int index = y * (CANVAS_W / 2) + x;
+            if (!forceFull && fb[index] == prev_framebuffer[index]) continue;
+            prev_framebuffer[index] = fb[index];
+            if (band >= 0 && band < MAX_DISPLAY_BANDS) {
+                dirtyBands[band] = true;
+            }
+        }
+    }
+    for (int bandY = 0; bandY < renderHeight; bandY += DISPLAY_BUFFER_ROWS) {
+        const int band = bandY / DISPLAY_BUFFER_ROWS;
+        if (!forceFull && (band >= MAX_DISPLAY_BANDS || !dirtyBands[band])) continue;
+        const int bandHeight = LV_MIN(DISPLAY_BUFFER_ROWS, renderHeight - bandY);
+        for (int outputY = 0; outputY < bandHeight; outputY++) {
+            const int sourceY = sourceYMap[bandY + outputY];
+            for (int outputX = 0; outputX < renderWidth; outputX++) {
+                const int sourceX = sourceXMap[outputX];
+                const int sourceIndex = sourceY * (CANVAS_W / 2) + sourceX / 2;
+                const uint8_t pixel = fb[sourceIndex];
+                const uint8_t color = (sourceX & 1) ? (pixel >> 4) : (pixel & 0x0F);
+                displayRow[outputY * renderWidth + outputX] = pico_palette_565[pal[color]];
+            }
+        }
+        display_draw_bitmap(display, displayOffsetX, displayOffsetY + bandY,
+                            displayOffsetX + renderWidth, displayOffsetY + bandY + bandHeight,
+                            displayRow);
+    }
 }
 
 /* ── Return to cart select screen ────────────────────────────────────── */
@@ -167,6 +201,15 @@ void Picotility::renderDisplay(bool forceFull) {
 void Picotility::returnToMenu() {
     state = AppState::CartSelect;
     vm.state = PICO_VM_STOPPED;
+    if (display && displayRow != nullptr) {
+        memset(displayRow, 0, static_cast<size_t>(renderWidth) * DISPLAY_BUFFER_ROWS * sizeof(*displayRow));
+        for (int y = 0; y < renderHeight; y += DISPLAY_BUFFER_ROWS) {
+            const int bandHeight = LV_MIN(DISPLAY_BUFFER_ROWS, renderHeight - y);
+            display_draw_bitmap(display, displayOffsetX, displayOffsetY + y,
+                                displayOffsetX + renderWidth, displayOffsetY + y + bandHeight,
+                                displayRow);
+        }
+    }
 
     if (canvas) lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
     if (statusLabel) {
@@ -177,10 +220,16 @@ void Picotility::returnToMenu() {
         lv_obj_remove_flag(cartList, LV_OBJ_FLAG_HIDDEN);
         lv_group_t* grp = lv_group_get_default();
         if (grp) {
+            lv_group_remove_all_objs(grp);
+            lv_group_add_obj(grp, cartList);
             lv_group_set_editing(grp, false);
             lv_group_focus_obj(cartList);
         }
     }
+}
+
+void Picotility::closeApp() {
+    app_event_emit_close(app_scheduler_current_app_id());
 }
 
 /* ── Toolbar button callback — return to cart list ───────────────────── */
@@ -193,6 +242,16 @@ void Picotility::onCartSelectClicked(lv_event_t* e) {
     }
 }
 
+void Picotility::onNavigationClicked(lv_event_t* e) {
+    (void)e;
+    if (!g_instance) return;
+    if (g_instance->state == AppState::Running) {
+        g_instance->returnToMenu();
+    } else {
+        g_instance->closeApp();
+    }
+}
+
 /* ── Emulation timer callback (~30 or 60 Hz) ─────────────────────────── */
 
 void Picotility::emuTimerCb(lv_timer_t* timer) {
@@ -202,7 +261,6 @@ void Picotility::emuTimerCb(lv_timer_t* timer) {
         return;
     }
     if (g_instance->state != AppState::Running) {
-        PICO_LOG("timer: not running (state=%d)", (int)g_instance->state);
         return;
     }
 
@@ -224,6 +282,11 @@ void Picotility::emuTimerCb(lv_timer_t* timer) {
 
     /* Step the VM (calls _update/_draw in Lua) */
     pico_vm_step(&self->vm);
+
+    if ((self->vm.frame_count % 60) == 0) {
+        PICO_LOG("frame: %lu state=%d", (unsigned long)self->vm.frame_count,
+                 (int)self->vm.state);
+    }
 
     /* Check for VM error — show error and return to menu */
     if (self->vm.state == PICO_VM_ERROR) {
@@ -301,11 +364,15 @@ void Picotility::onTouchEvent(lv_event_t* e) {
     lv_point_t point;
     lv_indev_get_point(indev, &point);
 
-    /* Convert screen coordinates to canvas-local coordinates */
-    lv_area_t canvas_area;
-    lv_obj_get_coords(g_instance->canvas, &canvas_area);
-    int16_t cx = point.x - canvas_area.x1;
-    int16_t cy = point.y - canvas_area.y1;
+    /* Convert screen coordinates to the centered square game area. */
+    int16_t cx = point.x - g_instance->displayOffsetX;
+    int16_t cy = point.y - g_instance->displayOffsetY;
+    if (cx < 0 || cy < 0 || cx >= g_instance->renderWidth || cy >= g_instance->renderHeight) {
+        pico_input_touch(&g_instance->vm.input, false, 0, 0);
+        return;
+    }
+    cx = static_cast<int16_t>((cx * CANVAS_W) / g_instance->renderWidth);
+    cy = static_cast<int16_t>((cy * CANVAS_H) / g_instance->renderHeight);
 
     bool pressed = (code == LV_EVENT_PRESSED || code == LV_EVENT_PRESSING);
     pico_input_touch(&g_instance->vm.input, pressed, cx, cy);
@@ -331,16 +398,21 @@ void Picotility::startCartFromPath(const char* path) {
     /* Start the VM */
     pico_vm_run(&vm);
     state = AppState::Running;
-    PICO_LOG("startCart: running");
+    PICO_LOG("startCart: running fps=%lu draw=%d update=%d update60=%d",
+             (unsigned long)vm.target_fps, vm.has_draw ? 1 : 0,
+             vm.has_update ? 1 : 0, vm.has_update60 ? 1 : 0);
 
     /* Hide cart list, show canvas */
     if (cartList) lv_obj_add_flag(cartList, LV_OBJ_FLAG_HIDDEN);
     if (statusLabel) lv_obj_add_flag(statusLabel, LV_OBJ_FLAG_HIDDEN);
     if (canvas) lv_obj_remove_flag(canvas, LV_OBJ_FLAG_HIDDEN);
 
-    /* Focus canvas for key input — editing mode passes arrow keys through */
+    /* Isolate gameplay input from the app's navigation group. This prevents
+       Tab/arrow keys from moving focus through the cart UI while playing. */
     lv_group_t* grp = lv_group_get_default();
     if (grp) {
+        lv_group_remove_all_objs(grp);
+        lv_group_add_obj(grp, canvas);
         lv_group_focus_obj(canvas);
         lv_group_set_editing(grp, true);
     }
@@ -349,8 +421,7 @@ void Picotility::startCartFromPath(const char* path) {
     memset(prev_framebuffer, 0xFF, sizeof(prev_framebuffer));
     memset(keyHold, 0, sizeof(keyHold));
 
-    /* Clear canvas buffer to black */
-    memset(cbuf, 0, sizeof(cbuf));
+    memset(displayRow, 0, sizeof(displayRow));
     renderDisplay(false);
 
     /* Update timer period based on cart's target FPS */
@@ -374,16 +445,24 @@ void Picotility::onCartSelected(lv_event_t* e) {
 void Picotility::buildCartList(lv_obj_t* list) {
     free_cart_paths();
 
-    /* Ensure directory exists, then scan */
+    /* Scan user-installed carts first. Packaged carts are scanned below. */
     ensure_cart_dir();
-    DIR* dir = opendir(CART_DIR);
-    if (!dir) {
-        lv_list_add_text(list, "Put .p8/.p8.png in " CART_DIR "/");
-        return;
-    }
+    char assetsDir[256] = {};
+    bool hasPackagedAssets = app_paths_get_assets_directory(APP_ID, assetsDir, sizeof(assetsDir)) == ERROR_NONE;
+    const char* directories[] = { CART_DIR, assetsDir };
+    const int directoryCount = hasPackagedAssets ? 2 : 1;
+    for (int directoryIndex = 0; directoryIndex < directoryCount; directoryIndex++) {
+        char cartDirectory[320] = {};
+        if (directoryIndex == 0) {
+            snprintf(cartDirectory, sizeof(cartDirectory), "%s", directories[directoryIndex]);
+        } else {
+            snprintf(cartDirectory, sizeof(cartDirectory), "%s/carts", directories[directoryIndex]);
+        }
 
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
+        DIR* dir = opendir(cartDirectory);
+        if (!dir) continue;
+        struct dirent* entry;
+        while ((entry = readdir(dir)) != nullptr) {
         const char* name = entry->d_name;
         size_t len = strlen(name);
         if (len < 4) continue;
@@ -398,10 +477,10 @@ void Picotility::buildCartList(lv_obj_t* list) {
         if (!valid) continue;
 
         /* Allocate path string */
-        size_t path_len = strlen(CART_DIR) + 1 + len + 1;
+        size_t path_len = strlen(cartDirectory) + 1 + len + 1;
         char* path = (char*)malloc(path_len);
         if (!path) break;
-        snprintf(path, path_len, CART_DIR "/%s", name);
+        snprintf(path, path_len, "%s/%s", cartDirectory, name);
 
         /* Grow the pointer array */
         char** tmp = (char**)realloc(cart_paths, sizeof(char*) * (cart_count + 1));
@@ -415,8 +494,9 @@ void Picotility::buildCartList(lv_obj_t* list) {
         lv_obj_t* btn = lv_list_add_button(list, LV_SYMBOL_FILE, name);
         lv_obj_add_event_cb(btn, onCartSelected, LV_EVENT_CLICKED, path);
         cart_count++;
+        }
+        closedir(dir);
     }
-    closedir(dir);
 
     if (cart_count == 0) {
         lv_list_add_text(list, "No carts found");
@@ -426,7 +506,9 @@ void Picotility::buildCartList(lv_obj_t* list) {
 
 /* ── App lifecycle ───────────────────────────────────────────────────── */
 
-void Picotility::onShow(AppHandle app, lv_obj_t* parent) {
+void Picotility::onShow(AppInstanceId app, lv_obj_t* parent) {
+    (void)app;
+    PICO_LOG("lifecycle: onShow");
     g_instance = this;
 
     // Zero-init relevant state
@@ -438,8 +520,20 @@ void Picotility::onShow(AppHandle app, lv_obj_t* parent) {
     cartList = nullptr;
     emuTimer = nullptr;
     initialized = false;
-    memset(keyHold, 0, sizeof(keyHold));
-    memset(cbuf, 0, sizeof(cbuf));
+    displayOffsetX = 0;
+    displayOffsetY = 0;
+    renderWidth = CANVAS_W;
+    renderHeight = CANVAS_H;
+    free(displayRow);
+    displayRow = nullptr;
+    displayRowWidth = 0;
+    free(sourceXMap);
+    sourceXMap = nullptr;
+    free(sourceYMap);
+    sourceYMap = nullptr;
+
+    if (device_get_first_active_by_type(&DISPLAY_TYPE, &display) == ERROR_NONE) {
+    }
 
     /* Initialize VM */
     if (!pico_vm_init(&vm)) {
@@ -452,13 +546,10 @@ void Picotility::onShow(AppHandle app, lv_obj_t* parent) {
     lv_obj_remove_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_flex_flow(parent, LV_FLEX_FLOW_COLUMN);
 
-    /* Toolbar with cart select button */
-    lv_obj_t* toolbar = tt_lvgl_toolbar_create_for_app(parent, app);
-    lv_obj_align(toolbar, LV_ALIGN_TOP_MID, 0, 0);
-    tt_lvgl_toolbar_add_text_button_action(toolbar, LV_SYMBOL_LIST,
-                                           onCartSelectClicked, nullptr);
+    lv_obj_t* toolbar = lvgl_toolbar_create(parent, "Picotility");
+    lvgl_toolbar_set_nav_action(toolbar, LV_SYMBOL_LEFT, onNavigationClicked, nullptr);
 
-    /* Container below toolbar — fills remaining space */
+    /* Main content container */
     lv_obj_t* cont = lv_obj_create(parent);
     lv_obj_set_width(cont, LV_PCT(100));
     lv_obj_set_flex_grow(cont, 1);
@@ -482,12 +573,13 @@ void Picotility::onShow(AppHandle app, lv_obj_t* parent) {
     lv_obj_set_flex_grow(cartList, 1);
     buildCartList(cartList);
 
-    /* Canvas for PICO-8 display (hidden until cart starts) */
-    canvas = lv_canvas_create(cont);
-    lv_canvas_set_buffer(canvas, cbuf, CANVAS_W, CANVAS_H,
-                         LV_COLOR_FORMAT_RGB565);
+    /* Transparent LVGL input surface; game pixels use the native display API. */
+    canvas = lv_obj_create(cont);
+    lv_obj_set_style_bg_opa(canvas, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(canvas, 0, 0);
     lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_size(canvas, CANVAS_W, CANVAS_H);
+    lv_obj_set_width(canvas, LV_PCT(100));
+    lv_obj_set_flex_grow(canvas, 1);
 
     /* Key input on canvas */
     lv_obj_add_flag(canvas, LV_OBJ_FLAG_CLICKABLE);
@@ -499,6 +591,42 @@ void Picotility::onShow(AppHandle app, lv_obj_t* parent) {
     lv_obj_add_event_cb(canvas, onTouchEvent, LV_EVENT_RELEASED, nullptr);
     lv_obj_add_event_cb(canvas, onTouchEvent, LV_EVENT_PRESSING, nullptr);
 
+    lv_obj_add_flag(cartList, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(canvas, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_update_layout(canvas);
+    lv_area_t canvasArea;
+    lv_obj_get_coords(canvas, &canvasArea);
+    const int availableWidth = LV_MAX(1, lv_area_get_width(&canvasArea));
+    const int availableHeight = LV_MAX(1, lv_area_get_height(&canvasArea));
+    const int squareSize = LV_MIN(availableWidth, availableHeight);
+    renderWidth = squareSize;
+    renderHeight = squareSize;
+    displayOffsetX = canvasArea.x1 + (availableWidth - squareSize) / 2;
+    displayOffsetY = canvasArea.y1 + (availableHeight - squareSize) / 2;
+    sourceXMap = static_cast<uint16_t*>(malloc(static_cast<size_t>(renderWidth) * sizeof(uint16_t)));
+    sourceYMap = static_cast<uint16_t*>(malloc(static_cast<size_t>(renderHeight) * sizeof(uint16_t)));
+    if (sourceXMap != nullptr) {
+        for (int x = 0; x < renderWidth; x++) sourceXMap[x] = (x * CANVAS_W) / renderWidth;
+    }
+    if (sourceYMap != nullptr) {
+        for (int y = 0; y < renderHeight; y++) sourceYMap[y] = (y * CANVAS_H) / renderHeight;
+    }
+    if (display != nullptr) {
+        displayRow = static_cast<uint16_t*>(calloc(
+            static_cast<size_t>(renderWidth) * DISPLAY_BUFFER_ROWS, sizeof(uint16_t)));
+        if (displayRow != nullptr) {
+            displayRowWidth = renderWidth;
+        }
+    }
+    lv_obj_add_flag(canvas, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(cartList, LV_OBJ_FLAG_HIDDEN);
+    if (grp) {
+        lv_group_remove_all_objs(grp);
+        lv_group_add_obj(grp, cartList);
+        lv_group_focus_obj(cartList);
+        lv_group_set_editing(grp, false);
+    }
+
     /* Emulation timer (starts paused — only runs when Running) */
     emuTimer = lv_timer_create(emuTimerCb, 1000 / PICO_FPS_DEFAULT, nullptr);
 
@@ -508,8 +636,9 @@ void Picotility::onShow(AppHandle app, lv_obj_t* parent) {
 
 Picotility::Picotility() = default;
 
-void Picotility::onHide(AppHandle app) {
-    (void)app;
+void Picotility::onHide() {
+    PICO_LOG("lifecycle: onHide state=%d frame=%lu",
+             (int)state, (unsigned long)vm.frame_count);
 
     if (emuTimer) {
         lv_timer_delete(emuTimer);
@@ -519,6 +648,13 @@ void Picotility::onHide(AppHandle app) {
         pico_vm_shutdown(&vm);
         initialized = false;
     }
+    if (display) {
+        device_put(display);
+        display = nullptr;
+    }
+    free(displayRow);
+    displayRow = nullptr;
+    displayRowWidth = 0;
     free_cart_paths();
     state = AppState::CartSelect;
 
@@ -529,4 +665,14 @@ void Picotility::onHide(AppHandle app) {
     parentWidget = nullptr;
 
     g_instance = nullptr;
+}
+
+void Picotility::createWidgets(lv_obj_t* parent, void* userData) {
+    auto* app = static_cast<Picotility*>(userData);
+    app->onShow(0, parent);
+}
+
+void Picotility::destroyWidgets(void* userData) {
+    auto* app = static_cast<Picotility*>(userData);
+    app->onHide();
 }

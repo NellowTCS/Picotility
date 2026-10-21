@@ -1,11 +1,12 @@
 // Picotility.h — PICO-8 Emulator app class for Tactility
 #pragma once
 
-#include <tt_app.h>
+#include <app/instance.h>
 #include <lvgl.h>
-#include <TactilityCpp/App.h>
 
 extern "C" {
+#include <tactility/device.h>
+#include <tactility/drivers/display.h>
 #include "pico_vm.h"
 #include "pico_config.h"
 }
@@ -13,7 +14,7 @@ extern "C" {
 #define CANVAS_W PICO_SCREEN_WIDTH   /* 128 */
 #define CANVAS_H PICO_SCREEN_HEIGHT  /* 128 */
 
-class Picotility final : public App {
+class Picotility final {
 
 private:
     enum class AppState {
@@ -38,8 +39,18 @@ private:
     lv_obj_t* cartList = nullptr;
     lv_obj_t* parentWidget = nullptr;
 
-    // Canvas buffer — RGB565 (2 bytes per pixel)
-    uint16_t cbuf[CANVAS_W * CANVAS_H]{};
+    // Native display row buffer. The PICO framebuffer remains packed 4bpp in pico_ram_t.
+    uint16_t* displayRow = nullptr;
+    int displayRowWidth = 0;
+    static constexpr int DISPLAY_BUFFER_ROWS = 4;
+    static constexpr int MAX_DISPLAY_BANDS = (480 + DISPLAY_BUFFER_ROWS - 1) / DISPLAY_BUFFER_ROWS;
+    int renderWidth = CANVAS_W;
+    int renderHeight = CANVAS_H;
+    uint16_t* sourceXMap = nullptr;
+    uint16_t* sourceYMap = nullptr;
+    Device* display = nullptr;
+    int displayOffsetX = 0;
+    int displayOffsetY = 0;
 
     // Timer for emulation loop
     lv_timer_t* emuTimer = nullptr;
@@ -51,11 +62,13 @@ private:
     // Methods
     void renderDisplay(bool forceFull);
     void returnToMenu();
+    void closeApp();
     void startCartFromPath(const char* path);
     void buildCartList(lv_obj_t* list);
 
     // Static callbacks
     static void onCartSelectClicked(lv_event_t* e);
+    static void onNavigationClicked(lv_event_t* e);
     static void emuTimerCb(lv_timer_t* timer);
     static void onKeyEvent(lv_event_t* e);
     static void onTouchEvent(lv_event_t* e);
@@ -64,6 +77,8 @@ private:
 public:
     Picotility();
     
-    void onShow(AppHandle context, lv_obj_t* parent) override;
-    void onHide(AppHandle context) override;
+    static void createWidgets(lv_obj_t* parent, void* userData);
+    static void destroyWidgets(void* userData);
+    void onShow(AppInstanceId app, lv_obj_t* parent);
+    void onHide();
 };
